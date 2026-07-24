@@ -8,21 +8,26 @@ st.set_page_config(page_title="Programa Audio, Video y Salas", layout="centered"
 st.title("📹 Generador de Programa: Audio, Video y Salas")
 st.caption("Congregación Gallito, San José de la Montaña")
 
-# 1. Base de Hermanos y Capacidades Configurada (Incluye a Iván Zamora)
+# 1. Base de Hermanos por Rol Exacto
+
+# Hermanos para Audio y Video (Sin Carlos Blanco ni Elixander Alvarado)
 hermanos_av = [
     "Carlos Josué Pereira", "Carlos Enrique Pereira", "José Pereira", "Josué López", 
     "Rodney Alfaro", "Geremy Fernández", "Julio Sánchez", "Dashler Sánchez", 
-    "Sebastián Montero", "David Herrera", "José Alberto González", "Javier García", 
-    "Elixander Alvarado", "Iván Zamora"
+    "Sebastián Montero", "David Herrera", "José Alberto González", "Javier García"
 ]
 
-hermanos_solo_mics = ["Rafael Segura", "Kenneth Solís", "Walter Sánchez"]
+# Hermanos exclusivos o dedicados a micrófonos/apoyo
+hermanos_solo_mics = [
+    "Rafael Segura", "Kenneth Solís", "Walter Sánchez", 
+    "Iván Zamora", "Carlos Blanco", "Elixander Alvarado"
+]
 
-# Lista EXCLUSIVA para Acomodadores (Ancianos y Siervos Ministeriales)
+# Lista de Acomodadores (Ancianos, Siervos Ministeriales + Elixander Alvarado)
 ancianos_y_ministeriales = [
     "Carlos Josué Pereira", "José Pereira", "Josué López", "Rodney Alfaro",
     "Geremy Fernández", "Julio Sánchez", "David Herrera", "José Alberto González",
-    "Javier García"
+    "Javier García", "Elixander Alvarado"
 ]
 
 # 2. Control de Fechas y Traslados
@@ -32,11 +37,13 @@ fecha = st.sidebar.date_input("Seleccione la fecha de la reunión")
 es_septiembre_o_mas = fecha.month >= 9
 visita_sc_pasada = fecha > datetime.date(2026, 8, 23)
 
+# Aplicar traslados e itinerarios
 disponibles_av = hermanos_av.copy()
 if visita_sc_pasada and "Geremy Fernández" in disponibles_av:
     disponibles_av.remove("Geremy Fernández")
 
-disponibles_mics = hermanos_solo_mics.copy()
+# Todos los de A/V + la lista de solo micrófonos están disponibles para micrófonos
+disponibles_mics = disponibles_av + hermanos_solo_mics
 if es_septiembre_o_mas:
     disponibles_mics.append("Iván Chavarría")
 
@@ -56,23 +63,22 @@ st.info("💡 Recordatorio: Oraciones y Limpieza NO se marcan aquí (los hermano
 # 4. Generación con Prioridad Equilibrada
 if st.button("🚀 Generar Programa"):
     libres_av = [h for h in disponibles_av if h not in ocupados]
-    libres_mics = [h for h in (disponibles_av + disponibles_mics) if h not in ocupados]
+    libres_mics = [h for h in disponibles_mics if h not in ocupados]
     libres_acom = [h for h in disponibles_acom if h not in ocupados]
     
-    if len(libres_av) >= 2 and len(libres_mics) >= 2 and len(libres_acom) >= 1:
-        # Separar no ancianos para darles prioridad en A/V
+    if len(libres_av) >= 2 and len(libres_mics) >= 1 and len(libres_acom) >= 1:
+        # Priorizar publicadores para A/V
         publicadores_av = [h for h in libres_av if h not in ancianos_y_ministeriales]
         ancianos_av = [h for h in libres_av if h in ancianos_y_ministeriales]
         
-        # Mezclar priorizando publicadores
         pool_av = publicadores_av + ancianos_av
         equipo_av = random.sample(pool_av, 2)
         
-        # Selección de 1 Micrófono (priorizando no ancianos restante)
+        # Selección de 1 Micrófono (sin repetir A/V)
         libres_mics_restantes = [h for h in libres_mics if h not in equipo_av]
         equipo_mics = random.sample(libres_mics_restantes, 1)
         
-        # Selección de 1 Acomodador (solo ancianos/ministeriales sin repetir)
+        # Selección de 1 Acomodador (sin repetir con A/V ni micrófonos)
         libres_acom_restantes = [h for h in libres_acom if h not in equipo_av and h not in equipo_mics]
         
         if libres_acom_restantes:
