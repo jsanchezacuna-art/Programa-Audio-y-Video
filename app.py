@@ -25,11 +25,11 @@ hermanos_solo_mics = [
     "Iván Zamora", "Carlos Blanco", "Elixander Alvarado"
 ]
 
-# Acomodadores (Ancianos, Siervos Ministeriales + Elixander Alvarado)
+# Acomodadores (Ancianos, Siervos Ministeriales + Elixander Alvarado + Roger Loaiza)
 ancianos_y_ministeriales = [
     "Carlos Josué Pereira", "José Pereira", "Josué López", "Rodney Alfaro",
     "Geremy Fernández", "Julio Sánchez", "David Herrera", "José Alberto González",
-    "Javier García", "Elixander Alvarado"
+    "Javier García", "Elixander Alvarado", "Roger Loaiza"
 ]
 
 # 2. Selección de Mes y Año
@@ -42,7 +42,7 @@ mes_nombres = [
 mes_sel = st.sidebar.selectbox("Seleccione el Mes", mes_nombres, index=6)
 num_mes = mes_nombres.index(mes_sel) + 1
 
-# Obtener todos los miércoles (2) y domingos (6) del mes seleccionado
+# Obtener todos los miércoles (2) y domingos (6) del mes seleccionado como base
 num_dias = calendar.monthrange(anio, num_mes)[1]
 fechas_reunion = []
 
@@ -53,25 +53,47 @@ for dia in range(1, num_dias + 1):
 
 st.subheader(f"🗓️ Reuniones para {mes_sel} {anio}: {len(fechas_reunion)} fechas encontradas")
 
-# 3. Formulario para marcar ocupados, ausencias o cancelar por asamblea
-st.write("Seleccione el estado de cada reunión o marque los hermanos no disponibles:")
+# 3. Formulario para marcar ocupados, cambio de día (Visita SC) o cancelaciones
+st.write("Seleccione el estado de cada reunión, ajuste días por visita del SC o marque los no disponibles:")
 
 ocupados_por_fecha = {}
 canceladas_por_fecha = {}
+dias_ajustados_por_fecha = {}
 
-with st.expander("📌 Configurar fechas del mes (Ocupados, Vacaciones y Cancelaciones)", expanded=True):
+with st.expander("📌 Configurar fechas del mes (Ocupados, Visita SC y Cancelaciones)", expanded=True):
     for f in fechas_reunion:
-        dia_semana = "Miércoles" if f.weekday() == 2 else "Domingo"
-        etiqueta = f"{dia_semana} {f.strftime('%d/%m/%Y')}"
+        es_miercoles = f.weekday() == 2
+        dia_semana_defecto = "Miércoles" if es_miercoles else "Domingo"
+        etiqueta_base = f"{dia_semana_defecto} {f.strftime('%d/%m/%Y')}"
         
-        st.markdown(f"### 🗓️ {etiqueta}")
+        st.markdown(f"### 🗓️ {etiqueta_base}")
+        
+        # Opción para mover el día por visita del SC (solo si es reunión de entre semana)
+        if es_miercoles:
+            dia_real = st.radio(
+                f"Día de la reunión de entre semana (Visita SC):",
+                options=["Miércoles", "Martes"],
+                index=0,
+                key=f"dia_real_{f}",
+                horizontal=True
+            )
+            # Si se selecciona Martes, ajustar fecha exacta (-1 día)
+            if dia_real == "Martes":
+                fecha_efectiva = f - datetime.timedelta(days=1)
+            else:
+                fecha_efectiva = f
+        else:
+            dia_real = "Domingo"
+            fecha_efectiva = f
+            
+        dias_ajustados_por_fecha[f] = (dia_real, fecha_efectiva)
         
         es_cancelada = st.checkbox(f"❌ Cancelar esta reunión (Asamblea / Sin reunión)", key=f"canc_{f}")
         canceladas_por_fecha[f] = es_cancelada
         
         if not es_cancelada:
-            visita_sc_pasada = f > datetime.date(2026, 8, 23)
-            es_septiembre_o_mas = f.month >= 9
+            visita_sc_pasada = fecha_efectiva > datetime.date(2026, 8, 23)
+            es_septiembre_o_mas = fecha_efectiva.month >= 9
             
             disp_av = hermanos_av.copy()
             if visita_sc_pasada and "Geremy Fernández" in disp_av:
@@ -81,10 +103,10 @@ with st.expander("📌 Configurar fechas del mes (Ocupados, Vacaciones y Cancela
             if es_septiembre_o_mas:
                 disp_mics.append("Iván Chavarría")
 
-            opciones_totales = sorted(list(set(disp_av + disp_mics)))
+            opciones_totales = sorted(list(set(disp_av + disp_mics + ancianos_y_ministeriales)))
             
             ocupados_por_fecha[f] = st.multiselect(
-                f"Hermanos NO disponibles el {etiqueta} (Partes activas, vacaciones, permisos, etc.):",
+                f"Hermanos NO disponibles el {dia_real} {fecha_efectiva.strftime('%d/%m/%Y')}:",
                 options=opciones_totales,
                 key=f.strftime("%Y-%m-%d")
             )
@@ -93,13 +115,21 @@ with st.expander("📌 Configurar fechas del mes (Ocupados, Vacaciones y Cancela
         
         st.divider()
 
-# Función para priorizar a los que llevan menos asignaciones (Objetivo: ~2 por mes)
+# Función para priorizar equilibrio con límite máximo para Roger Loaiza (máx 1 al mes)
 def seleccionar_equilibrado(lista_candidatos, contador_usos, cantidad=1):
     if not lista_candidatos:
         return []
     
-    # Ordenar candidatos por número de veces asignados en el mes
-    candidatos_ordenados = sorted(lista_candidatos, key=lambda h: (contador_usos[h], random.random()))
+    candidatos_validos = []
+    for h in lista_candidatos:
+        if h == "Roger Loaiza" and contador_usos[h] >= 1:
+            continue
+        candidatos_validos.append(h)
+        
+    if not candidatos_validos:
+        return []
+    
+    candidatos_ordenados = sorted(candidatos_validos, key=lambda h: (contador_usos[h], random.random()))
     seleccionados = candidatos_ordenados[:cantidad]
     return seleccionados
 
@@ -111,11 +141,12 @@ if st.button("🚀 Generar Programa Completo del Mes"):
     contador_usos = Counter()
     
     for f in fechas_reunion:
-        dia_nombre = "Miércoles" if f.weekday() == 2 else "Domingo"
+        dia_nombre, fecha_efectiva = dias_ajustados_por_fecha[f]
+        fecha_txt = fecha_efectiva.strftime("%d/%m/%Y")
         
         if canceladas_por_fecha[f]:
             filas_programa.append({
-                "Fecha": f.strftime("%d/%m/%Y"),
+                "Fecha": fecha_txt,
                 "Día": dia_nombre,
                 "Audio": "--- NO HAY REUNIÓN ---",
                 "Video": "--- NO HAY REUNIÓN ---",
@@ -124,8 +155,8 @@ if st.button("🚀 Generar Programa Completo del Mes"):
             })
             continue
 
-        visita_sc_pasada = f > datetime.date(2026, 8, 23)
-        es_septiembre_o_mas = f.month >= 9
+        visita_sc_pasada = fecha_efectiva > datetime.date(2026, 8, 23)
+        es_septiembre_o_mas = fecha_efectiva.month >= 9
         
         d_av = hermanos_av.copy()
         if visita_sc_pasada and "Geremy Fernández" in d_av:
@@ -166,7 +197,7 @@ if st.button("🚀 Generar Programa Completo del Mes"):
                 equipo_acom = ["Revisar manual"]
             
             filas_programa.append({
-                "Fecha": f.strftime("%d/%m/%Y"),
+                "Fecha": fecha_txt,
                 "Día": dia_nombre,
                 "Audio": equipo_av[0],
                 "Video": equipo_av[1],
@@ -174,7 +205,7 @@ if st.button("🚀 Generar Programa Completo del Mes"):
                 "Acomodador": equipo_acom[0]
             })
         else:
-            st.error(f"Faltan hermanos disponibles para la fecha {f.strftime('%d/%m/%Y')}.")
+            st.error(f"Faltan hermanos disponibles para la fecha {fecha_txt}.")
             error_detectado = True
 
     if not error_detectado and len(filas_programa) == len(fechas_reunion):
