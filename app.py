@@ -19,6 +19,7 @@ MESES_LISTA = [
 ]
 MESES_DICT = {nombre: i + 1 for i, nombre in enumerate(MESES_LISTA)}
 DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+FECHA_CORTE_SALIDA = datetime.date(2026, 8, 23)
 
 def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles"):
     dias_map = {"Lunes": 0, "Martes": 1, "Miércoles": 2, "Jueves": 3, "Viernes": 4, "Sábado": 5, "Domingo": 6}
@@ -61,7 +62,7 @@ with st.sidebar:
     
     col_m1, col_m2 = st.columns(2)
     with col_m1:
-        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=7)
+        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=7) # Agosto
     
     meses_seleccionados = [mes_1]
     if cant_meses == "2 Meses":
@@ -121,9 +122,9 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("👥 Hermanos Autorizados por Puesto")
 
-    # 1. Audio y Video
-    av_defecto = ["José Pereira", "José Alberto González", "Carlos Josué Pereira", "Javier García", "Sebastián Montero", "David Herrera"]
-    av_txt = st.text_area("🎧🖥️ Autorizados para Audio y Video:", value="\n".join(av_defecto), height=110)
+    # 1. Audio y Video (Incluye a Geremy)
+    av_defecto = ["José Pereira", "José Alberto González", "Carlos Josué Pereira", "Javier García", "Sebastián Montero", "David Herrera", "Geremy Fernández"]
+    av_txt = st.text_area("🎧🖥️ Autorizados para Audio y Video:", value="\n".join(av_defecto), height=130)
     hermanos_av = [h.strip() for h in av_txt.split("\n") if h.strip()]
 
     # EXCEPCIÓN: SOLO AUDIO
@@ -166,7 +167,7 @@ if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
     )
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("👉 Selecciona a los hermanos ocupados ese día. El sistema regulará a **Iván Zamora** a máximo 2 veces al mes en micrófonos y rotará al resto alternando días.")
+st.info("👉 **Notas activas:** Roger Loaiza solo acomodador entre semana (hasta 23/08/2026). Geremy Fernández rota en todos los puestos (hasta 23/08/2026). Iván Zamora máx. 2 veces/mes en micros.")
 
 datos_programa_final = []
 
@@ -174,9 +175,9 @@ datos_programa_final = []
 conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
 ultimo_puesto_av = {h: None for h in hermanos_av}
 ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
-conteo_ivan_mes = {}  # Guarda 'clave_mes' -> cantidad asignada a Iván Zamora
+conteo_ivan_mes = {}
 
-# --- 3. ALGORITMO DE ASIGNACIÓN CON REGLA ESPECIAL PARA IVÁN ---
+# --- 3. ALGORITMO DE ASIGNACIÓN CON REGLAS DE CORTE DE FECHA ---
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
@@ -218,15 +219,24 @@ for idx, reun in enumerate(st.session_state.reuniones):
             es_domingo = (reun['dia'] == "Domingo")
             tipo_dia_actual = "Domingo" if es_domingo else "EntreSemana"
             
-            # Obtener el mes actual de la reunión para limitar a Iván Zamora
+            # Obtención de fecha objeto
             try:
-                dt_obj = datetime.datetime.strptime(reun['fecha'], "%d/%m/%Y")
+                dt_obj = datetime.datetime.strptime(reun['fecha'], "%d/%m/%Y").date()
                 clave_mes = dt_obj.strftime("%Y-%m")
             except Exception:
+                dt_obj = datetime.date(anio, 1, 1)
                 clave_mes = "actual"
 
+            # REGLAS DE CORTE Y RESTRICCIONES PERSONALIZADAS
+            hermanos_salieron = dt_obj > FECHA_CORTE_SALIDA
+
+            # Excluir a Roger y Geremy por completo si ya pasó el 23/08/2026
+            if hermanos_salieron:
+                excluidos.add("Roger Loaiza")
+                excluidos.add("Geremy Fernández")
+
             # 1. ASIGNAR AUDIO
-            candidatos_audio = [h for h in hermanos_av if h not in excluidos]
+            candidatos_audio = [h for h in hermanos_av if h not in excluidos and h != "Roger Loaiza"]
             if candidatos_audio:
                 candidatos_audio.sort(key=lambda h: (
                     conteo_acumulado.get(h, 0),
@@ -240,7 +250,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 excluidos.add(h_audio)
 
             # 2. ASIGNAR VIDEO
-            candidatos_video = [h for h in hermanos_av if h not in excluidos and h not in hermanos_solo_audio]
+            candidatos_video = [h for h in hermanos_av if h not in excluidos and h not in hermanos_solo_audio and h != "Roger Loaiza"]
             if candidatos_video:
                 candidatos_video.sort(key=lambda h: (
                     conteo_acumulado.get(h, 0),
@@ -262,11 +272,11 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 ultimo_puesto_av[h_video] = 'Video'
 
             # 3. ASIGNAR MICRÓFONO
-            candidatos_mic = [h for h in hermanos_mic if h not in excluidos]
+            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Roger Loaiza"]
             if not candidatos_mic:
-                candidatos_mic = [h for h in todos_hermanos if h not in excluidos]
+                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Roger Loaiza"]
 
-            # REGLA: Si Iván Zamora ya cumplió sus 2 asignaciones del mes, se excluye de candidatos en lo que queda del mes
+            # Regla Iván Zamora: máx 2 veces al mes
             if conteo_ivan_mes.get(clave_mes, 0) >= 2:
                 candidatos_mic = [h for h in candidatos_mic if "Iván Zamora" not in h]
 
@@ -286,8 +296,16 @@ for idx, reun in enumerate(st.session_state.reuniones):
 
             # 4. ASIGNAR ACOMODADOR
             candidatos_aco = [h for h in hermanos_aco if h not in excluidos]
+            
+            # REGLA ROGER LOAIZA: Solo entre semana y antes del 23/08/2026
+            if es_domingo or hermanos_salieron:
+                candidatos_aco = [h for h in candidatos_aco if "Roger Loaiza" not in h]
+
             if not candidatos_aco:
                 candidatos_aco = [h for h in todos_hermanos if h not in excluidos]
+                if es_domingo or hermanos_salieron:
+                    candidatos_aco = [h for h in candidatos_aco if "Roger Loaiza" not in h]
+
             candidatos_aco.sort(key=lambda h: conteo_acumulado.get(h, 0))
             h_aco = candidatos_aco[0] if candidatos_aco else ""
             if h_aco:
