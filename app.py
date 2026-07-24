@@ -2,116 +2,152 @@ import streamlit as st
 import pandas as pd
 import random
 import datetime
+import calendar
 
 st.set_page_config(page_title="Programa Audio, Video y Salas", layout="centered")
 
-st.title("📹 Generador de Programa: Audio, Video y Salas")
+st.title("📅 Generador Mensual: Audio, Video y Salas")
 st.caption("Congregación Gallito, San José de la Montaña")
 
 # 1. Base de Hermanos por Rol Exacto
 
-# Hermanos para Audio y Video (Sin Carlos Blanco ni Elixander Alvarado)
+# Audio y Video
 hermanos_av = [
     "Carlos Josué Pereira", "Carlos Enrique Pereira", "José Pereira", "Josué López", 
     "Rodney Alfaro", "Geremy Fernández", "Julio Sánchez", "Dashler Sánchez", 
     "Sebastián Montero", "David Herrera", "José Alberto González", "Javier García"
 ]
 
-# Hermanos exclusivos o dedicados a micrófonos/apoyo
+# Exclusivos/dedicados a micrófonos y apoyo
 hermanos_solo_mics = [
     "Rafael Segura", "Kenneth Solís", "Walter Sánchez", 
     "Iván Zamora", "Carlos Blanco", "Elixander Alvarado"
 ]
 
-# Lista de Acomodadores (Ancianos, Siervos Ministeriales + Elixander Alvarado)
+# Acomodadores (Ancianos, Siervos Ministeriales + Elixander Alvarado)
 ancianos_y_ministeriales = [
     "Carlos Josué Pereira", "José Pereira", "Josué López", "Rodney Alfaro",
     "Geremy Fernández", "Julio Sánchez", "David Herrera", "José Alberto González",
     "Javier García", "Elixander Alvarado"
 ]
 
-# 2. Control de Fechas y Traslados
+# 2. Selección de Mes y Año
 st.sidebar.header("⚙️ Configuración del Mes")
-fecha = st.sidebar.date_input("Seleccione la fecha de la reunión")
+anio = st.sidebar.number_input("Año", min_value=2026, max_value=2030, value=2026)
+mes_nombres = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+]
+mes_sel = st.sidebar.selectbox("Seleccione el Mes", mes_nombres, index=6)
+num_mes = mes_nombres.index(mes_sel) + 1
 
-es_septiembre_o_mas = fecha.month >= 9
-visita_sc_pasada = fecha > datetime.date(2026, 8, 23)
+# Obtener todos los miércoles (2) y domingos (6) del mes seleccionado
+num_dias = calendar.monthrange(anio, num_mes)[1]
+fechas_reunion = []
 
-# Aplicar traslados e itinerarios
-disponibles_av = hermanos_av.copy()
-if visita_sc_pasada and "Geremy Fernández" in disponibles_av:
-    disponibles_av.remove("Geremy Fernández")
+for dia in range(1, num_dias + 1):
+    fecha_dt = datetime.date(anio, num_mes, dia)
+    if fecha_dt.weekday() in [2, 6]: # 2 = Miércoles, 6 = Domingo
+        fechas_reunion.append(fecha_dt)
 
-# Todos los de A/V + la lista de solo micrófonos están disponibles para micrófonos
-disponibles_mics = disponibles_av + hermanos_solo_mics
-if es_septiembre_o_mas:
-    disponibles_mics.append("Iván Chavarría")
+st.subheader(f"🗓️ Reuniones encontradas para {mes_sel} {anio}: {len(fechas_reunion)}")
 
-disponibles_acom = ancianos_y_ministeriales.copy()
-if visita_sc_pasada and "Geremy Fernández" in disponibles_acom:
-    disponibles_acom.remove("Geremy Fernández")
+# 3. Formulario para marcar ocupados por cada reunión del mes
+st.write("Marque los hermanos que tienen partes activas (Presidencia, Lectura, Discurso, etc.) en cada fecha:")
 
-# 3. Formulario de Ocupados en el Programa
-st.subheader("1. Selección de Ocupados")
-ocupados = st.multiselect(
-    "Marque los hermanos que tienen Presidencia, Lectura, Discurso o Partes en la reunión hoy:",
-    options=sorted(list(set(disponibles_av + disponibles_mics)))
-)
+ocupados_por_fecha = {}
 
-st.info("💡 Recordatorio: Oraciones y Limpieza NO se marcan aquí (los hermanos sí están disponibles para A/V).")
+with st.expander("📌 Abrir lista de ocupados por fecha", expanded=True):
+    for f in fechas_reunion:
+        dia_semana = "Miércoles" if f.weekday() == 2 else "Domingo"
+        etiqueta = f"{dia_semana} {f.strftime('%d/%m/%Y')}"
+        
+        # Evaluar reglas por fecha
+        visita_sc_pasada = f > datetime.date(2026, 8, 23)
+        es_septiembre_o_mas = f.month >= 9
+        
+        disp_av = hermanos_av.copy()
+        if visita_sc_pasada and "Geremy Fernández" in disp_av:
+            disp_av.remove("Geremy Fernández")
+            
+        disp_mics = disp_av + hermanos_solo_mics
+        if es_septiembre_o_mas:
+            disp_mics.append("Iván Chavarría")
 
-# 4. Generación con Prioridad Equilibrada
-if st.button("🚀 Generar Programa"):
-    libres_av = [h for h in disponibles_av if h not in ocupados]
-    libres_mics = [h for h in disponibles_mics if h not in ocupados]
-    libres_acom = [h for h in disponibles_acom if h not in ocupados]
+        opciones_totales = sorted(list(set(disp_av + disp_mics)))
+        
+        ocupados_por_fecha[f] = st.multiselect(
+            f"Ocupados el {etiqueta}:",
+            options=opciones_totales,
+            key=f.strftime("%Y-%m-%d")
+        )
+
+# 4. Generación de todo el Programa Mensual
+if st.button("🚀 Generar Programa Completo del Mes"):
+    filas_programa = []
     
-    if len(libres_av) >= 2 and len(libres_mics) >= 1 and len(libres_acom) >= 1:
-        # Priorizar publicadores para A/V
-        publicadores_av = [h for h in libres_av if h not in ancianos_y_ministeriales]
-        ancianos_av = [h for h in libres_av if h in ancianos_y_ministeriales]
+    for f in fechas_reunion:
+        visita_sc_pasada = f > datetime.date(2026, 8, 23)
+        es_septiembre_o_mas = f.month >= 9
         
-        pool_av = publicadores_av + ancianos_av
-        equipo_av = random.sample(pool_av, 2)
+        # Listas disponibles por fecha
+        d_av = hermanos_av.copy()
+        if visita_sc_pasada and "Geremy Fernández" in d_av:
+            d_av.remove("Geremy Fernández")
+            
+        d_mics = d_av + hermanos_solo_mics
+        if es_septiembre_o_mas:
+            d_mics.append("Iván Chavarría")
+            
+        d_acom = ancianos_y_ministeriales.copy()
+        if visita_sc_pasada and "Geremy Fernández" in d_acom:
+            d_acom.remove("Geremy Fernández")
+            
+        ocupados_hoy = ocupados_por_fecha[f]
         
-        # Selección de 1 Micrófono (sin repetir A/V)
-        libres_mics_restantes = [h for h in libres_mics if h not in equipo_av]
-        equipo_mics = random.sample(libres_mics_restantes, 1)
+        libres_av = [h for h in d_av if h not in ocupados_hoy]
+        libres_mics = [h for h in d_mics if h not in ocupados_hoy]
+        libres_acom = [h for h in d_acom if h not in ocupados_hoy]
         
-        # Selección de 1 Acomodador (sin repetir con A/V ni micrófonos)
-        libres_acom_restantes = [h for h in libres_acom if h not in equipo_av and h not in equipo_mics]
-        
-        if libres_acom_restantes:
-            equipo_acom = random.sample(libres_acom_restantes, 1)
+        if len(libres_av) >= 2 and len(libres_mics) >= 1 and len(libres_acom) >= 1:
+            # Prioridad A/V
+            publicadores_av = [h for h in libres_av if h not in ancianos_y_ministeriales]
+            ancianos_av = [h for h in libres_av if h in ancianos_y_ministeriales]
+            pool_av = publicadores_av + ancianos_av
+            equipo_av = random.sample(pool_av, 2)
+            
+            # Micrófono
+            libres_mics_restantes = [h for h in libres_mics if h not in equipo_av]
+            equipo_mics = random.sample(libres_mics_restantes, 1)
+            
+            # Acomodador
+            libres_acom_restantes = [h for h in libres_acom if h not in equipo_av and h not in equipo_mics]
+            equipo_acom = random.sample(libres_acom_restantes, 1) if libres_acom_restantes else ["Revisar manual"]
+            
+            dia_nombre = "Miércoles" if f.weekday() == 2 else "Domingo"
+            
+            filas_programa.append({
+                "Fecha": f.strftime("%d/%m/%Y"),
+                "Día": dia_nombre,
+                "Audio": equipo_av[0],
+                "Video": equipo_av[1],
+                "Micrófono": equipo_mics[0],
+                "Acomodador": equipo_acom[0]
+            })
         else:
-            equipo_acom = ["Requiere revisión manual"]
+            st.error(f"Faltan hermanos disponibles para la fecha {f.strftime('%d/%m/%Y')}.")
 
-        # Crear tabla visual
-        res_df = pd.DataFrame({
-            "Función": [
-                "Encargado de Audio",
-                "Encargado de Video",
-                "Plataforma y Micrófono",
-                "Acomodador"
-            ],
-            "Hermano Asignado": [
-                equipo_av[0],
-                equipo_av[1],
-                equipo_mics[0],
-                equipo_acom[0]
-            ]
-        })
+    if len(filas_programa) == len(fechas_reunion):
+        res_df = pd.DataFrame(filas_programa)
         
-        st.success("¡Programa calculado con éxito!")
-        st.table(res_df)
+        st.success(f"¡Programa de {mes_sel} {anio} generado con éxito!")
+        st.dataframe(res_df, use_container_width=True)
         
-        # Descarga en CSV para Excel
+        # Exportar un solo CSV del mes completo
         csv_data = res_df.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="📥 Descargar Programa (.csv para Excel)",
+            label=f"📥 Descargar Programa Completo de {mes_sel} (.csv)",
             data=csv_data,
-            file_name=f"Programa_AV_{fecha}.csv",
+            file_name=f"Programa_AV_{mes_sel}_{anio}.csv",
             mime="text/csv"
         )
-    else:
-        st.error("No hay suficientes hermanos disponibles sin asignación previa en la lista.")
