@@ -9,11 +9,11 @@ st.set_page_config(page_title="Programa Audio, Video y Salas", layout="centered"
 st.title("📹 Generador de Programa: Audio, Video y Salas")
 st.caption("Congregación Gallito, San José de la Montaña")
 
-# 1. Base de Hermanos y Capacidades Configurada
+# 1. Base de Hermanos y Capacidades Configurada (Actualizada)
 hermanos_av = [
     "Carlos Josué Pereira", "José Pereira", "Josué López", "Rodney Alfaro",
     "Geremy Fernández", "Julio Sánchez", "Dashler Sánchez", "Sebastián Montero",
-    "David Herrera", "José Alberto González", "Javier García"
+    "David Herrera", "José Alberto González", "Javier García", "Elixander Alvarado"
 ]
 
 hermanos_solo_mics = ["Rafael Segura", "Kenneth Solís", "Walter Sánchez"]
