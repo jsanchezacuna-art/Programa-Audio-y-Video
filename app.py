@@ -11,7 +11,7 @@ st.caption("Congregación Gallito, San José de la Montaña")
 
 # 1. Base de Hermanos por Rol Exacto
 
-# Audio y Video
+# Audio y Video (Sin Carlos Blanco ni Elixander Alvarado)
 hermanos_av = [
     "Carlos Josué Pereira", "Carlos Enrique Pereira", "José Pereira", "Josué López", 
     "Rodney Alfaro", "Geremy Fernández", "Julio Sánchez", "Dashler Sánchez", 
@@ -50,47 +50,72 @@ for dia in range(1, num_dias + 1):
     if fecha_dt.weekday() in [2, 6]: # 2 = Miércoles, 6 = Domingo
         fechas_reunion.append(fecha_dt)
 
-st.subheader(f"🗓️ Reuniones encontradas para {mes_sel} {anio}: {len(fechas_reunion)}")
+st.subheader(f"🗓️ Reuniones para {mes_sel} {anio}: {len(fechas_reunion)} fechas encontradas")
 
-# 3. Formulario para marcar ocupados por cada reunión del mes
-st.write("Marque los hermanos que tienen partes activas (Presidencia, Lectura, Discurso, etc.) en cada fecha:")
+# 3. Formulario para marcar ocupados o cancelar por asamblea
+st.write("Seleccione el estado de cada reunión o marque los ocupados:")
 
 ocupados_por_fecha = {}
+canceladas_por_fecha = {}
 
-with st.expander("📌 Abrir lista de ocupados por fecha", expanded=True):
+with st.expander("📌 Configurar fechas del mes (Ocupados y Cancelaciones)", expanded=True):
     for f in fechas_reunion:
         dia_semana = "Miércoles" if f.weekday() == 2 else "Domingo"
         etiqueta = f"{dia_semana} {f.strftime('%d/%m/%Y')}"
         
-        # Evaluar reglas por fecha
-        visita_sc_pasada = f > datetime.date(2026, 8, 23)
-        es_septiembre_o_mas = f.month >= 9
+        st.markdown(f"### 🗓️ {etiqueta}")
         
-        disp_av = hermanos_av.copy()
-        if visita_sc_pasada and "Geremy Fernández" in disp_av:
-            disp_av.remove("Geremy Fernández")
+        # Checkbox para cancelar la reunión por asamblea
+        es_cancelada = st.checkbox(f"❌ Cancelar esta reunión (Asamblea / Sin reunión)", key=f"canc_{f}")
+        canceladas_por_fecha[f] = es_cancelada
+        
+        if not es_cancelada:
+            visita_sc_pasada = f > datetime.date(2026, 8, 23)
+            es_septiembre_o_mas = f.month >= 9
             
-        disp_mics = disp_av + hermanos_solo_mics
-        if es_septiembre_o_mas:
-            disp_mics.append("Iván Chavarría")
+            disp_av = hermanos_av.copy()
+            if visita_sc_pasada and "Geremy Fernández" in disp_av:
+                disp_av.remove("Geremy Fernández")
+                
+            disp_mics = disp_av + hermanos_solo_mics
+            if es_septiembre_o_mas:
+                disp_mics.append("Iván Chavarría")
 
-        opciones_totales = sorted(list(set(disp_av + disp_mics)))
+            opciones_totales = sorted(list(set(disp_av + disp_mics)))
+            
+            ocupados_por_fecha[f] = st.multiselect(
+                f"Hermanos ocupados el {etiqueta}:",
+                options=opciones_totales,
+                key=f.strftime("%Y-%m-%d")
+            )
+        else:
+            ocupados_por_fecha[f] = []
         
-        ocupados_por_fecha[f] = st.multiselect(
-            f"Ocupados el {etiqueta}:",
-            options=opciones_totales,
-            key=f.strftime("%Y-%m-%d")
-        )
+        st.divider()
 
-# 4. Generación de todo el Programa Mensual
+# 4. Generación del Programa Mensual
 if st.button("🚀 Generar Programa Completo del Mes"):
     filas_programa = []
+    error_detectado = False
     
     for f in fechas_reunion:
+        dia_nombre = "Miércoles" if f.weekday() == 2 else "Domingo"
+        
+        # Si la reunión se canceló
+        if canceladas_por_fecha[f]:
+            filas_programa.append({
+                "Fecha": f.strftime("%d/%m/%Y"),
+                "Día": dia_nombre,
+                "Audio": "--- NO HAY REUNIÓN ---",
+                "Video": "--- NO HAY REUNIÓN ---",
+                "Micrófono": "--- NO HAY REUNIÓN ---",
+                "Acomodador": "--- NO HAY REUNIÓN ---"
+            })
+            continue
+
         visita_sc_pasada = f > datetime.date(2026, 8, 23)
         es_septiembre_o_mas = f.month >= 9
         
-        # Listas disponibles por fecha
         d_av = hermanos_av.copy()
         if visita_sc_pasada and "Geremy Fernández" in d_av:
             d_av.remove("Geremy Fernández")
@@ -110,21 +135,16 @@ if st.button("🚀 Generar Programa Completo del Mes"):
         libres_acom = [h for h in d_acom if h not in ocupados_hoy]
         
         if len(libres_av) >= 2 and len(libres_mics) >= 1 and len(libres_acom) >= 1:
-            # Prioridad A/V
             publicadores_av = [h for h in libres_av if h not in ancianos_y_ministeriales]
             ancianos_av = [h for h in libres_av if h in ancianos_y_ministeriales]
             pool_av = publicadores_av + ancianos_av
             equipo_av = random.sample(pool_av, 2)
             
-            # Micrófono
             libres_mics_restantes = [h for h in libres_mics if h not in equipo_av]
             equipo_mics = random.sample(libres_mics_restantes, 1)
             
-            # Acomodador
             libres_acom_restantes = [h for h in libres_acom if h not in equipo_av and h not in equipo_mics]
             equipo_acom = random.sample(libres_acom_restantes, 1) if libres_acom_restantes else ["Revisar manual"]
-            
-            dia_nombre = "Miércoles" if f.weekday() == 2 else "Domingo"
             
             filas_programa.append({
                 "Fecha": f.strftime("%d/%m/%Y"),
@@ -136,14 +156,14 @@ if st.button("🚀 Generar Programa Completo del Mes"):
             })
         else:
             st.error(f"Faltan hermanos disponibles para la fecha {f.strftime('%d/%m/%Y')}.")
+            error_detectado = True
 
-    if len(filas_programa) == len(fechas_reunion):
+    if not error_detectado and len(filas_programa) == len(fechas_reunion):
         res_df = pd.DataFrame(filas_programa)
         
         st.success(f"¡Programa de {mes_sel} {anio} generado con éxito!")
         st.dataframe(res_df, use_container_width=True)
         
-        # Exportar un solo CSV del mes completo
         csv_data = res_df.to_csv(index=False).encode('utf-8')
         st.download_button(
             label=f"📥 Descargar Programa Completo de {mes_sel} (.csv)",
