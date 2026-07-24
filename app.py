@@ -2,6 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import datetime
 import calendar
+import pandas as pd
 
 # Configuración de la página
 st.set_page_config(
@@ -19,7 +20,6 @@ MESES_LISTA = [
 MESES_DICT = {nombre: i + 1 for i, nombre in enumerate(MESES_LISTA)}
 DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 
-# --- FUNCIÓN PARA GENERAR FECHAS AUTOMÁTICAS ---
 def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles"):
     dias_map = {"Lunes": 0, "Martes": 1, "Miércoles": 2, "Jueves": 3, "Viernes": 4, "Sábado": 5, "Domingo": 6}
     target_midweek = dias_map.get(dia_entre_semana, 2)
@@ -51,7 +51,7 @@ def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles
     reuniones_generadas.sort(key=lambda x: x["dt"])
     return reuniones_generadas
 
-# --- 1. BARRA LATERAL (CONFIGURACIÓN DE AÑO, MESES Y HERMANOS) ---
+# --- 1. BARRA LATERAL (CONFIGURACIÓN Y LISTAS POR PRIVILEGIO) ---
 with st.sidebar:
     st.header("⚙️ Configuración del Período")
     congregacion = st.text_input("Nombre de la Congregación", "El Gallito")
@@ -61,13 +61,13 @@ with st.sidebar:
     
     col_m1, col_m2 = st.columns(2)
     with col_m1:
-        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=7) # Agosto por defecto
+        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=7)
     
     meses_seleccionados = [mes_1]
     if cant_meses == "2 Meses":
         with col_m2:
             idx_m2 = (MESES_LISTA.index(mes_1) + 1) % 12
-            mes_2 = st.selectbox("Mes 2", MESES_LISTA, index=idx_m2) # Septiembre por defecto
+            mes_2 = st.selectbox("Mes 2", MESES_LISTA, index=idx_m2)
         meses_seleccionados.append(mes_2)
         periodo_str = f"{mes_1} y {mes_2} {anio}"
     else:
@@ -91,20 +91,56 @@ with st.sidebar:
         st.success("¡Fechas cargadas correctamente!")
         st.rerun()
 
+    # --- CARGA DE HISTORIAL ANTERIOR ---
     st.markdown("---")
-    st.subheader("👥 Lista Maestra de Hermanos")
-    hermanos_defecto = [
-        "José Pereira", "José Alberto González", "David Herrera", "Rodney Alfaro",
-        "Carlos Josué Pereira", "Julio Sánchez", "Iván Zamora", "Josué López",
-        "Javier García", "Dashler Sánchez", "Kenneth Solís", "Walter Sánchez",
-        "Sebastián Montero", "Carlos Blanco", "Elixander Alvarado",
-        "Geremy Fernández", "Rafael Segura", "Roger Loaiza", "Carlos Enrique Pereira"
-    ]
+    st.subheader("📂 Historial del Mes Anterior")
+    archivo_historial = st.file_uploader(
+        "Sube el programa anterior (Excel/CSV) para rotación:",
+        type=["xlsx", "xls", "csv"]
+    )
     
-    hermanos_texto = st.text_area("Hermanos registrados (uno por línea):", value="\n".join(hermanos_defecto), height=240)
-    lista_hermanos = [h.strip() for h in hermanos_texto.split("\n") if h.strip()]
+    conteo_historial = {}
+    if archivo_historial is not None:
+        try:
+            if archivo_historial.name.endswith(".csv"):
+                df_hist = pd.read_csv(archivo_historial)
+            else:
+                df_hist = pd.read_excel(archivo_historial)
+                
+            for col in ["Audio", "Video", "Micrófono", "Acomodador"]:
+                if col in df_hist.columns:
+                    for nombre in df_hist[col].dropna():
+                        nom_str = str(nombre).strip()
+                        if nom_str and "NO HAY" not in nom_str and nom_str != "-- Sin asignar --":
+                            conteo_historial[nom_str] = conteo_historial.get(nom_str, 0) + 1
+            st.success(f"¡Historial cargado con éxito!")
+        except Exception:
+            st.error("Error al leer el archivo.")
 
-# --- 2. INICIALIZACIÓN DE SESIÓN DE REUNIONES ---
+    # --- CLASIFICACIÓN DE HERMANOS POR PRIVILEGIO ---
+    st.markdown("---")
+    st.subheader("👥 Hermanos Autorizados por Puesto")
+    st.caption("Ajusta los nombres en cada grupo según los privilegios/aptitudes correspondientes:")
+
+    # 1. Audio y Video
+    av_defecto = ["José Pereira", "José Alberto González", "Carlos Josué Pereira", "Javier García", "Sebastián Montero", "David Herrera"]
+    av_txt = st.text_area("🎧🖥️ Autorizados para Audio y Video:", value="\n".join(av_defecto), height=110)
+    hermanos_av = [h.strip() for h in av_txt.split("\n") if h.strip()]
+
+    # 2. Micrófonos
+    mic_defecto = ["Iván Zamora", "Carlos Blanco", "Kenneth Solís", "Elixander Alvarado", "Geremy Fernández", "Rafael Segura"]
+    mic_txt = st.text_area("🎤 Autorizados para Micrófonos:", value="\n".join(mic_defecto), height=110)
+    hermanos_mic = [h.strip() for h in mic_txt.split("\n") if h.strip()]
+
+    # 3. Acomodadores
+    aco_defecto = ["Rodney Alfaro", "Josué López", "Walter Sánchez", "Julio Sánchez", "Dashler Sánchez", "Roger Loaiza", "Carlos Enrique Pereira"]
+    aco_txt = st.text_area("🚪 Autorizados para Acomodadores:", value="\n".join(aco_defecto), height=110)
+    hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
+
+    # Todos los hermanos combinados para seleccionar los "ocupados"
+    todos_hermanos = sorted(list(set(hermanos_av + hermanos_mic + hermanos_aco)))
+
+# --- 2. INICIALIZACIÓN DE SESIÓN ---
 if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
     st.session_state.reuniones = generar_fechas_meses(
         anio=anio,
@@ -113,43 +149,27 @@ if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
     )
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("👉 **Instrucciones:** Selecciona **únicamente** a los hermanos que tienen responsabilidades (Presidencia, Discursos, Plataforma, etc.). El sistema asignará **automáticamente** los puestos de Audio, Video, Micrófono y Acomodador con los hermanos disponibles.")
+st.info("👉 Selecciona los hermanos que tienen **presidencia, discursos, plataforma, etc.** El sistema asignará **Audio/Video, Micrófono y Acomodador únicamente entre los hermanos autorizados para cada puesto**.")
 
-col_btn1, col_btn2 = st.columns([3, 7])
-with col_btn1:
-    if st.button("➕ Agregar Fecha Manual"):
-        st.session_state.reuniones.append({
-            "fecha": f"01/{MESES_DICT[mes_1]:02d}/{anio}",
-            "dia": "Miércoles",
-            "sin_reunion": False,
-            "responsables": []
-        })
-        st.rerun()
-
-# --- 3. EDITOR DE OCUPADOS Y CÁLCULO AUTOMÁTICO ---
 datos_programa_final = []
+conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
 
-# Punteros para rotación equitativa automática
-idx_rotacion = 0
-
+# --- 3. PROCESAMIENTO Y ASIGNACIÓN SEGÚN REGLAS DE PRIVILEGIO ---
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
         
         with col_f1:
             reun['fecha'] = st.text_input("Fecha", value=reun['fecha'], key=f"fecha_{idx}")
-            
         with col_f2:
             idx_dia = DIAS_SEMANA.index(reun['dia']) if reun['dia'] in DIAS_SEMANA else 2
             reun['dia'] = st.selectbox("Día de la reunión", DIAS_SEMANA, index=idx_dia, key=f"dia_{idx}")
-            
         with col_f3:
             reun['sin_reunion'] = st.checkbox("🚫 CANCELAR SEMANA / ASAMBLEA", value=reun['sin_reunion'], key=f"sin_reunion_{idx}")
-            
         with col_f4:
             st.write("")
             st.write("")
-            if st.button("🗑️", key=f"del_{idx}", help="Eliminar fecha"):
+            if st.button("🗑️", key=f"del_{idx}"):
                 st.session_state.reuniones.pop(idx)
                 st.rerun()
 
@@ -164,37 +184,59 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 "Acomodador": "--- NO HAY REUNIÓN ---"
             })
         else:
-            # SELECCIÓN DE OCUPADOS
-            resp_validos = [h for h in reun.get('responsables', []) if h in lista_hermanos]
+            resp_validos = [h for h in reun.get('responsables', []) if h in todos_hermanos]
             reun['responsables'] = st.multiselect(
-                "🙋‍♂️ Hermanos con responsabilidades (Presidencia, Discursos, Lector, etc.):",
-                options=lista_hermanos,
+                "🙋‍♂️ Ocupados con responsabilidades principales ese día:",
+                options=todos_hermanos,
                 default=resp_validos,
-                key=f"resp_{idx}",
-                help="Estos hermanos NO serán asignados automáticamente a Audio, Video, Micrófono ni Acomodador."
+                key=f"resp_{idx}"
             )
             
-            # CÁLCULO DE DISPONIBLES Y ASIGNACIÓN AUTOMÁTICA ROTATIVA
-            disponibles = [h for h in lista_hermanos if h not in reun['responsables']]
-            
-            asig_auto = {"audio": "", "video": "", "mic": "", "acomodador": ""}
-            
-            if len(disponibles) > 0:
-                puestos = ["audio", "video", "mic", "acomodador"]
-                for p_idx, puesto in enumerate(puestos):
-                     hermano_elegido = disponibles[(idx_rotacion + p_idx) % len(disponibles)]
-                     asig_auto[puesto] = hermano_elegido
-                idx_rotacion += 4 # Avanza en la lista para la siguiente fecha
+            ocupados = set(reun['responsables'])
 
-            st.caption(f"🤖 **Asignación automática generada:** Audio: *{asig_auto['audio']}* | Video: *{asig_auto['video']}* | Mic: *{asig_auto['mic']}* | Acomodador: *{asig_auto['acomodador']}*")
+            # Auxiliar para seleccionar el hermano disponible con menor número de asignaciones
+            def seleccionar_hermano(lista_base, excluidos):
+                candidatos = [h for h in lista_base if h not in excluidos]
+                if not candidatos:
+                    # Si no hay candidatos exclusivos, busca en la lista general de disponibles
+                    candidatos = [h for h in todos_hermanos if h not in excluidos]
+                if candidatos:
+                    candidatos.sort(key=lambda h: conteo_acumulado.get(h, 0))
+                    return candidatos[0]
+                return ""
+
+            excluidos_actuales = set(ocupados)
+
+            # 1. Asignar Audio (desde lista AV)
+            h_audio = seleccionar_hermano(hermanos_av, excluidos_actuales)
+            if h_audio: excluidos_actuales.add(h_audio)
+
+            # 2. Asignar Video (desde lista AV)
+            h_video = seleccionar_hermano(hermanos_av, excluidos_actuales)
+            if h_video: excluidos_actuales.add(h_video)
+
+            # 3. Asignar Micrófono (desde lista MIC)
+            h_mic = seleccionar_hermano(hermanos_mic, excluidos_actuales)
+            if h_mic: excluidos_actuales.add(h_mic)
+
+            # 4. Asignar Acomodador (desde lista ACO)
+            h_aco = seleccionar_hermano(hermanos_aco, excluidos_actuales)
+            if h_aco: excluidos_actuales.add(h_aco)
+
+            # Actualizar conteo acumulado
+            for h_asig in [h_audio, h_video, h_mic, h_aco]:
+                if h_asig:
+                    conteo_acumulado[h_asig] = conteo_acumulado.get(h_asig, 0) + 1
+
+            st.caption(f"🤖 **Asignado respetando privilegios:** Audio: *{h_audio}* | Video: *{h_video}* | Mic: *{h_mic}* | Acomodador: *{h_aco}*")
 
             datos_programa_final.append({
                 "Fecha": reun['fecha'],
                 "Día": reun['dia'],
-                "Audio": asig_auto['audio'],
-                "Video": asig_auto['video'],
-                "Micrófono": asig_auto['mic'],
-                "Acomodador": asig_auto['acomodador']
+                "Audio": h_audio,
+                "Video": h_video,
+                "Micrófono": h_mic,
+                "Acomodador": h_aco
             })
 
 # --- 4. PLANTILLA HTML PARA VISTA PREVIA Y DESCARGAS ---
@@ -347,5 +389,5 @@ html_code = f"""
 """
 
 st.markdown("---")
-st.subheader("👁️ Vista Previa Final (Generada Automáticamente)")
+st.subheader("👁️ Vista Previa Final")
 components.html(html_code, height=750, scrolling=True)
