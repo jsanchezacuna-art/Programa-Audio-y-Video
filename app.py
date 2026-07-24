@@ -1,5 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
+import datetime
+import calendar
 
 # Configuración de la página
 st.set_page_config(
@@ -9,16 +11,107 @@ st.set_page_config(
 
 st.title("📋 Generador de Programa de Audio, Video y Salas")
 
-# --- 1. BARRA LATERAL (CONFIGURACIÓN DE HERMANOS Y PERÍODO) ---
+# --- DICCIONARIOS Y DÍAS ---
+MESES_LISTA = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+]
+
+MESES_DICT = {nombre: i + 1 for i, nombre in enumerate(MESES_LISTA)}
+
+DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+
+# --- FUNCIÓN PARA GENERAR FECHAS AUTOMÁTICAS ---
+def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles"):
+    dias_map = {"Lunes": 0, "Martes": 1, "Miércoles": 2, "Jueves": 3, "Viernes": 4, "Sábado": 5, "Domingo": 6}
+    target_midweek = dias_map.get(dia_entre_semana, 2)
+    
+    reuniones_generadas = []
+    
+    for mes_nombre in meses_seleccionados:
+        mes_num = MESES_DICT[mes_nombre]
+        num_dias = calendar.monthrange(anio, mes_num)[1]
+        
+        for dia in range(1, num_dias + 1):
+            dt = datetime.date(anio, mes_num, dia)
+            # Entre semana habitual
+            if dt.weekday() == target_midweek:
+                reuniones_generadas.append({
+                    "dt": dt,
+                    "fecha": dt.strftime("%d/%m/%Y"),
+                    "dia": dia_entre_semana,
+                    "sin_reunion": False,
+                    "responsables": [],
+                    "audio": "-- Sin asignar --",
+                    "video": "-- Sin asignar --",
+                    "mic": "-- Sin asignar --",
+                    "acomodador": "-- Sin asignar --"
+                })
+            # Fin de semana (Domingo)
+            elif dt.weekday() == 6:
+                reuniones_generadas.append({
+                    "dt": dt,
+                    "fecha": dt.strftime("%d/%m/%Y"),
+                    "dia": "Domingo",
+                    "sin_reunion": False,
+                    "responsables": [],
+                    "audio": "-- Sin asignar --",
+                    "video": "-- Sin asignar --",
+                    "mic": "-- Sin asignar --",
+                    "acomodador": "-- Sin asignar --"
+                })
+                
+    # Ordenar por fecha cronológica
+    reuniones_generadas.sort(key=lambda x: x["dt"])
+    return reuniones_generadas
+
+
+# --- 1. BARRA LATERAL (CONFIGURACIÓN DE AÑO, MESES Y HERMANOS) ---
 with st.sidebar:
-    st.header("⚙️ Configuración General")
+    st.header("⚙️ Configuración del Período")
     congregacion = st.text_input("Nombre de la Congregación", "El Gallito")
-    periodo = st.text_input("Meses / Período", "Agosto y Septiembre 2026")
+    
+    # SELECCIÓN DE AÑO Y CANTIDAD DE MESES
+    anio_actual = datetime.datetime.now().year
+    anio = st.number_input("Año", min_value=2024, max_value=2035, value=2026, step=1)
+    
+    cant_meses = st.radio("Cantidad de Meses a programar:", ["1 Mes", "2 Meses"], index=1)
+    
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=7) # Agosto por defecto
+    
+    meses_seleccionados = [mes_1]
+    
+    if cant_meses == "2 Meses":
+        with col_m2:
+            idx_m2 = (MESES_LISTA.index(mes_1) + 1) % 12
+            mes_2 = st.selectbox("Mes 2", MESES_LISTA, index=idx_m2) # Septiembre por defecto
+        meses_seleccionados.append(mes_2)
+        periodo_str = f"{mes_1} y {mes_2} {anio}"
+    else:
+        periodo_str = f"{mes_1} {anio}"
+        
+    st.markdown(f"**Período activo:** `{periodo_str}`")
+    
+    dia_habitual_entre_semana = st.selectbox(
+        "Día habitual entre semana:",
+        ["Miércoles", "Martes", "Jueves", "Lunes"],
+        index=0
+    )
     
     st.markdown("---")
+    if st.button("🔄 Cargar Fechas del Período"):
+        st.session_state.reuniones = generar_fechas_meses(
+            anio=anio,
+            meses_seleccionados=meses_seleccionados,
+            dia_entre_semana=dia_habitual_entre_semana
+        )
+        st.success("¡Fechas cargadas correctamente!")
+        st.rerun()
+
+    st.markdown("---")
     st.subheader("👥 Lista Maestra de Hermanos")
-    st.caption("Ingresa a todos los hermanos disponibles en la congregación (uno por línea):")
-    
     hermanos_defecto = [
         "José Pereira", "José Alberto González", "David Herrera", "Rodney Alfaro",
         "Carlos Josué Pereira", "Julio Sánchez", "Iván Zamora", "Josué López",
@@ -27,57 +120,61 @@ with st.sidebar:
         "Geremy Fernández", "Rafael Segura", "Roger Loaiza", "Carlos Enrique Pereira"
     ]
     
-    hermanos_texto = st.text_area("Hermanos registrados:", value="\n".join(hermanos_defecto), height=280)
+    hermanos_texto = st.text_area("Hermanos registrados (uno por línea):", value="\n".join(hermanos_defecto), height=240)
     lista_hermanos = [h.strip() for h in hermanos_texto.split("\n") if h.strip()]
 
-# --- 2. ESTADO INICIAL DE LAS REUNIONES ---
-if "reuniones" not in st.session_state:
-    st.session_state.reuniones = [
-        {"fecha": "02/08/2026", "dia": "Domingo", "sin_reunion": False, "responsables": [], "audio": "José Pereira", "video": "José Alberto González", "mic": "David Herrera", "acomodador": "Rodney Alfaro"},
-        {"fecha": "05/08/2026", "dia": "Miércoles", "sin_reunion": False, "responsables": [], "audio": "Carlos Josué Pereira", "video": "Julio Sánchez", "mic": "Iván Zamora", "acomodador": "Josué López"},
-        {"fecha": "09/08/2026", "dia": "Domingo", "sin_reunion": False, "responsables": [], "audio": "Javier García", "video": "Dashler Sánchez", "mic": "Kenneth Solís", "acomodador": "Walter Sánchez"},
-        {"fecha": "12/08/2026", "dia": "Miércoles", "sin_reunion": True, "responsables": [], "audio": "", "video": "", "mic": "", "acomodador": ""},
-        {"fecha": "16/08/2026", "dia": "Domingo", "sin_reunion": True, "responsables": [], "audio": "", "video": "", "mic": "", "acomodador": ""},
-        {"fecha": "18/08/2026", "dia": "Martes", "sin_reunion": False, "responsables": [], "audio": "Sebastián Montero", "video": "Josué López", "mic": "Carlos Blanco", "acomodador": "Elixander Alvarado"},
-        {"fecha": "23/08/2026", "dia": "Domingo", "sin_reunion": False, "responsables": [], "audio": "Geremy Fernández", "video": "José Alberto González", "mic": "Rafael Segura", "acomodador": "Roger Loaiza"},
-        {"fecha": "26/08/2026", "dia": "Miércoles", "sin_reunion": False, "responsables": [], "audio": "David Herrera", "video": "Sebastián Montero", "mic": "Rafael Segura", "acomodador": "Carlos Enrique Pereira"},
-        {"fecha": "30/08/2026", "dia": "Domingo", "sin_reunion": False, "responsables": [], "audio": "Dashler Sánchez", "video": "Carlos Josué Pereira", "mic": "Walter Sánchez", "acomodador": "Elixander Alvarado"},
-    ]
 
-st.subheader("🗓️ Programación de Fechas y Filtro de Disponibilidad")
+# --- 2. INICIALIZACIÓN DE SESIÓN DE REUNIONES ---
+if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
+    st.session_state.reuniones = generar_fechas_meses(
+        anio=anio,
+        meses_seleccionados=meses_seleccionados,
+        dia_entre_semana=dia_habitual_entre_semana
+    )
 
-col_btn1, col_btn2 = st.columns([2, 8])
+st.subheader(f"🗓️ Programación de Fechas — {periodo_str}")
+
+col_btn1, col_btn2 = st.columns([3, 7])
 with col_btn1:
-    if st.button("➕ Agregar Fecha"):
+    if st.button("➕ Agregar Fecha Manual"):
         st.session_state.reuniones.append({
-            "fecha": "01/09/2026", "dia": "Domingo", "sin_reunion": False, "responsables": [],
-            "audio": "", "video": "", "mic": "", "acomodador": ""
+            "fecha": f"01/{MESES_DICT[mes_1]:02d}/{anio}",
+            "dia": "Miércoles",
+            "sin_reunion": False,
+            "responsables": [],
+            "audio": "-- Sin asignar --",
+            "video": "-- Sin asignar --",
+            "mic": "-- Sin asignar --",
+            "acomodador": "-- Sin asignar --"
         })
         st.rerun()
 
 datos_programa_final = []
 
-# --- 3. SECCIÓN DEDICADA PARA CADA FECHA ---
+# --- 3. EDITOR DE REUNIONES POR FECHA ---
 for idx, reun in enumerate(st.session_state.reuniones):
-    with st.expander(f"📅 Reunión #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
-        col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 2, 1])
+    with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
+        col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
+        
         with col_f1:
             reun['fecha'] = st.text_input("Fecha", value=reun['fecha'], key=f"fecha_{idx}")
+            
         with col_f2:
-            dias_opciones = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
-            idx_dia = dias_opciones.index(reun['dia']) if reun['dia'] in dias_opciones else 0
-            reun['dia'] = st.selectbox("Día", dias_opciones, index=idx_dia, key=f"dia_{idx}")
+            idx_dia = DIAS_SEMANA.index(reun['dia']) if reun['dia'] in DIAS_SEMANA else 2
+            reun['dia'] = st.selectbox("Día de la reunión", DIAS_SEMANA, index=idx_dia, key=f"dia_{idx}", help="Puedes cambiar el día (por ejemplo, pasar de miércoles a martes).")
+            
         with col_f3:
-            reun['sin_reunion'] = st.checkbox("🚫 NO HAY REUNIÓN", value=reun['sin_reunion'], key=f"sin_reunion_{idx}")
+            reun['sin_reunion'] = st.checkbox("🚫 CANCELAR SEMANA / ASAMBLEA", value=reun['sin_reunion'], key=f"sin_reunion_{idx}")
+            
         with col_f4:
             st.write("")
             st.write("")
-            if st.button("🗑️", key=f"del_{idx}", help="Eliminar esta fecha"):
+            if st.button("🗑️", key=f"del_{idx}", help="Eliminar fecha"):
                 st.session_state.reuniones.pop(idx)
                 st.rerun()
 
         if reun['sin_reunion']:
-            st.info("Marcado como 'NO HAY REUNIÓN'.")
+            st.warning("⚠️ Reunión cancelada / Semana de Asamblea.")
             datos_programa_final.append({
                 "Fecha": reun['fecha'],
                 "Día": reun['dia'],
@@ -88,24 +185,23 @@ for idx, reun in enumerate(st.session_state.reuniones):
             })
         else:
             st.markdown("---")
-            # PASO 1: RESPONSABILIDADES
-            st.markdown("**1️⃣ Selecciona hermanos con asignación principal (Ocupados ese día):**")
-            resp_validos = [h for h in reun['responsables'] if h in lista_hermanos]
+            # PASO 1: RESPONSABILIDADES PRINCIPALES
+            st.markdown("**1️⃣ Selecciona hermanos con asignación principal (Presidencia, Discursos, Plataforma, Lector, etc.):**")
+            resp_validos = [h for h in reun.get('responsables', []) if h in lista_hermanos]
             reun['responsables'] = st.multiselect(
-                "Presidencia, Plataforma, Oradores, Lectores, etc.:",
+                "Hermanos ocupados este día:",
                 options=lista_hermanos,
                 default=resp_validos,
-                key=f"resp_{idx}",
-                help="Los hermanos seleccionados aquí NO aparecerán en la lista para Audio, Video, Micrófono o Acomodador."
+                key=f"resp_{idx}"
             )
             
-            # FILTRAR DISPONIBLES
+            # FILTRO DE DISPONIBLES
             disponibles = [h for h in lista_hermanos if h not in reun['responsables']]
             options_with_empty = ["-- Sin asignar --"] + disponibles
 
-            # PASO 2: AUDIO Y VIDEO CON HERMANOS FILTRADOS
-            st.markdown("**2️⃣ Asigna Audio, Video y Salas (Solo hermanos disponibles):**")
-            st.caption(f"🟢 Quedan **{len(disponibles)}** hermanos disponibles para esta reunión.")
+            # PASO 2: ASIGNACIÓN AUDIO Y VIDEO
+            st.markdown("**2️⃣ Asigna Audio, Video, Micrófono y Acomodador (Solo hermanos disponibles):**")
+            st.caption(f"🟢 Quedan **{len(disponibles)}** hermanos disponibles.")
 
             col_a1, col_a2, col_a3, col_a4 = st.columns(4)
 
@@ -113,13 +209,13 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 return options.index(val) if val in options else 0
 
             with col_a1:
-                reun['audio'] = st.selectbox("Audio", options_with_empty, index=get_index(reun['audio'], options_with_empty), key=f"audio_{idx}")
+                reun['audio'] = st.selectbox("Audio", options_with_empty, index=get_index(reun.get('audio', ''), options_with_empty), key=f"audio_{idx}")
             with col_a2:
-                reun['video'] = st.selectbox("Video", options_with_empty, index=get_index(reun['video'], options_with_empty), key=f"video_{idx}")
+                reun['video'] = st.selectbox("Video", options_with_empty, index=get_index(reun.get('video', ''), options_with_empty), key=f"video_{idx}")
             with col_a3:
-                reun['mic'] = st.selectbox("Micrófono", options_with_empty, index=get_index(reun['mic'], options_with_empty), key=f"mic_{idx}")
+                reun['mic'] = st.selectbox("Micrófono", options_with_empty, index=get_index(reun.get('mic', ''), options_with_empty), key=f"mic_{idx}")
             with col_a4:
-                reun['acomodador'] = st.selectbox("Acomodador", options_with_empty, index=get_index(reun['acomodador'], options_with_empty), key=f"aco_{idx}")
+                reun['acomodador'] = st.selectbox("Acomodador", options_with_empty, index=get_index(reun.get('acomodador', ''), options_with_empty), key=f"aco_{idx}")
 
             datos_programa_final.append({
                 "Fecha": reun['fecha'],
@@ -130,7 +226,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 "Acomodador": reun['acomodador'] if reun['acomodador'] != "-- Sin asignar --" else ""
             })
 
-# --- 4. RENDERIZADO DEL PROGRAMA FINAL EN VISTA PREVIA Y DESCARGAS ---
+# --- 4. PLANTILLA HTML PARA VISTA PREVIA Y DESCARGAS ---
 filas_html = ""
 for item in datos_programa_final:
     is_no_reunion = (item['Audio'] == "--- NO HAY REUNIÓN ---")
@@ -223,7 +319,7 @@ html_code = f"""
   <div id="contenedor-programa">
     <div class="header-banner">
       <h1>Programa de Audio, Video y Salas</h1>
-      <p>Congregación {congregacion} | {periodo}</p>
+      <p>Congregación {congregacion} | {periodo_str}</p>
     </div>
     <div class="tabla-contenedor">
       <table>
