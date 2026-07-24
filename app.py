@@ -8,12 +8,12 @@ st.set_page_config(page_title="Programa Audio, Video y Salas", layout="centered"
 st.title("📹 Generador de Programa: Audio, Video y Salas")
 st.caption("Congregación Gallito, San José de la Montaña")
 
-# 1. Base de Hermanos y Capacidades Configurada
+# 1. Base de Hermanos y Capacidades Configurada (Incluye a Iván Zamora)
 hermanos_av = [
     "Carlos Josué Pereira", "Carlos Enrique Pereira", "José Pereira", "Josué López", 
     "Rodney Alfaro", "Geremy Fernández", "Julio Sánchez", "Dashler Sánchez", 
     "Sebastián Montero", "David Herrera", "José Alberto González", "Javier García", 
-    "Elixander Alvarado"
+    "Elixander Alvarado", "Iván Zamora"
 ]
 
 hermanos_solo_mics = ["Rafael Segura", "Kenneth Solís", "Walter Sánchez"]
@@ -53,21 +53,26 @@ ocupados = st.multiselect(
 
 st.info("💡 Recordatorio: Oraciones y Limpieza NO se marcan aquí (los hermanos sí están disponibles para A/V).")
 
-# 4. Generación y Exportación
+# 4. Generación con Prioridad Equilibrada
 if st.button("🚀 Generar Programa"):
     libres_av = [h for h in disponibles_av if h not in ocupados]
     libres_mics = [h for h in (disponibles_av + disponibles_mics) if h not in ocupados]
     libres_acom = [h for h in disponibles_acom if h not in ocupados]
     
     if len(libres_av) >= 2 and len(libres_mics) >= 2 and len(libres_acom) >= 1:
-        # Selección de Audio y Video
-        equipo_av = random.sample(libres_av, 2)
+        # Separar no ancianos para darles prioridad en A/V
+        publicadores_av = [h for h in libres_av if h not in ancianos_y_ministeriales]
+        ancianos_av = [h for h in libres_av if h in ancianos_y_ministeriales]
         
-        # Selección de 1 solo Micrófono (sin repetir a los de A/V)
+        # Mezclar priorizando publicadores
+        pool_av = publicadores_av + ancianos_av
+        equipo_av = random.sample(pool_av, 2)
+        
+        # Selección de 1 Micrófono (priorizando no ancianos restante)
         libres_mics_restantes = [h for h in libres_mics if h not in equipo_av]
         equipo_mics = random.sample(libres_mics_restantes, 1)
         
-        # Selección de 1 Acomodador (solo ancianos/ministeriales, sin repetir)
+        # Selección de 1 Acomodador (solo ancianos/ministeriales sin repetir)
         libres_acom_restantes = [h for h in libres_acom if h not in equipo_av and h not in equipo_mics]
         
         if libres_acom_restantes:
@@ -94,7 +99,7 @@ if st.button("🚀 Generar Programa"):
         st.success("¡Programa calculado con éxito!")
         st.table(res_df)
         
-        # Descarga rápida en CSV (compatible con Excel sin librerías adicionales)
+        # Descarga en CSV para Excel
         csv_data = res_df.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Descargar Programa (.csv para Excel)",
