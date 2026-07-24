@@ -10,9 +10,13 @@ st.set_page_config(page_title="Programa Audio, Video y Salas", layout="centered"
 st.title("📅 Generador Mensual: Audio, Video y Salas")
 st.caption("Congregación Gallito, San José de la Montaña")
 
+# Inicializar historial en memoria de la sesión
+if "programa_guardado" not in st.session_state:
+    st.session_state["programa_guardado"] = None
+
 # 1. Base de Hermanos por Rol Exacto
 
-# Audio y Video (Se remueve a Carlos Enrique Pereira)
+# Audio y Video (Sin Carlos Enrique Pereira)
 hermanos_av = [
     "Carlos Josué Pereira", "José Pereira", "Josué López", 
     "Rodney Alfaro", "Geremy Fernández", "Julio Sánchez", "Dashler Sánchez", 
@@ -68,7 +72,6 @@ with st.expander("📌 Configurar fechas del mes (Ocupados, Visita SC y Cancelac
         
         st.markdown(f"### 🗓️ {etiqueta_base}")
         
-        # Opción para mover el día por visita del SC (solo si es reunión de entre semana)
         if es_miercoles:
             dia_real = st.radio(
                 f"Día de la reunión de entre semana (Visita SC):",
@@ -77,7 +80,6 @@ with st.expander("📌 Configurar fechas del mes (Ocupados, Visita SC y Cancelac
                 key=f"dia_real_{f}",
                 horizontal=True
             )
-            # Si se selecciona Martes, ajustar fecha exacta (-1 día)
             if dia_real == "Martes":
                 fecha_efectiva = f - datetime.timedelta(days=1)
             else:
@@ -115,7 +117,6 @@ with st.expander("📌 Configurar fechas del mes (Ocupados, Visita SC y Cancelac
         
         st.divider()
 
-# Función para priorizar equilibrio con límite máximo para Roger Loaiza (máx 1 al mes)
 def seleccionar_equilibrado(lista_candidatos, contador_usos, cantidad=1):
     if not lista_candidatos:
         return []
@@ -177,18 +178,15 @@ if st.button("🚀 Generar Programa Completo del Mes"):
         libres_acom = [h for h in d_acom if h not in ocupados_hoy]
         
         if len(libres_av) >= 2 and len(libres_mics) >= 1 and len(libres_acom) >= 1:
-            # 1. Audio y Video
             equipo_av = seleccionar_equilibrado(libres_av, contador_usos, cantidad=2)
             for h in equipo_av:
                 contador_usos[h] += 1
             
-            # 2. Micrófono
             libres_mics_restantes = [h for h in libres_mics if h not in equipo_av]
             equipo_mics = seleccionar_equilibrado(libres_mics_restantes, contador_usos, cantidad=1)
             for h in equipo_mics:
                 contador_usos[h] += 1
             
-            # 3. Acomodador
             libres_acom_restantes = [h for h in libres_acom if h not in equipo_av and h not in equipo_mics]
             equipo_acom = seleccionar_equilibrado(libres_acom_restantes, contador_usos, cantidad=1)
             if equipo_acom:
@@ -209,19 +207,28 @@ if st.button("🚀 Generar Programa Completo del Mes"):
             error_detectado = True
 
     if not error_detectado and len(filas_programa) == len(fechas_reunion):
-        res_df = pd.DataFrame(filas_programa)
-        
-        st.success(f"¡Programa de {mes_sel} {anio} generado con éxito!")
-        st.dataframe(res_df, use_container_width=True)
-        
-        with st.expander("📊 Ver resumen de asignaciones por hermano en el mes"):
-            conteo_df = pd.DataFrame(list(contador_usos.items()), columns=["Hermano", "Asignaciones en el mes"]).sort_values(by="Asignaciones en el mes", ascending=False)
-            st.table(conteo_df)
+        # Guardar en la sesión de la app
+        st.session_state["programa_guardado"] = pd.DataFrame(filas_programa)
+        st.success(f"¡Programa de {mes_sel} {anio} generado y guardado en memoria!")
 
-        csv_data = res_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label=f"📥 Descargar Programa Completo de {mes_sel} (.csv)",
-            data=csv_data,
-            file_name=f"Programa_AV_{mes_sel}_{anio}.csv",
-            mime="text/csv"
-        )
+# 5. Sección de Visualización, Edición Manual y Descarga
+if st.session_state["programa_guardado"] is not None:
+    st.divider()
+    st.subheader("📝 Edición Manual y Descarga del Programa")
+    st.info("💡 Puedes hacer doble clic sobre cualquier casilla de la tabla para cambiar un hermano manualmente si lo necesitas.")
+    
+    # Tabla editable interactiva
+    df_editable = st.data_editor(
+        st.session_state["programa_guardado"], 
+        use_container_width=True,
+        num_rows="fixed"
+    )
+    
+    # Botón para descargar la versión (original o editada)
+    csv_data = df_editable.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label=f"📥 Descargar Programa Final de {mes_sel} (.csv)",
+        data=csv_data,
+        file_name=f"Programa_AV_{mes_sel}_{anio}.csv",
+        mime="text/csv"
+    )
