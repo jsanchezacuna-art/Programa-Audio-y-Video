@@ -3,6 +3,7 @@ import pandas as pd
 import random
 import datetime
 import calendar
+from collections import Counter
 
 st.set_page_config(page_title="Programa Audio, Video y Salas", layout="centered")
 
@@ -18,7 +19,7 @@ hermanos_av = [
     "Sebastián Montero", "David Herrera", "José Alberto González", "Javier García"
 ]
 
-# Exclusivos/dedicados a micrófonos y apoyo
+# Exclusivos/dedicados a micrófonos y apoyo (Incluye a Iván Zamora)
 hermanos_solo_mics = [
     "Rafael Segura", "Kenneth Solís", "Walter Sánchez", 
     "Iván Zamora", "Carlos Blanco", "Elixander Alvarado"
@@ -52,20 +53,19 @@ for dia in range(1, num_dias + 1):
 
 st.subheader(f"🗓️ Reuniones para {mes_sel} {anio}: {len(fechas_reunion)} fechas encontradas")
 
-# 3. Formulario para marcar ocupados o cancelar por asamblea
-st.write("Seleccione el estado de cada reunión o marque los ocupados:")
+# 3. Formulario para marcar ocupados, ausencias o cancelar por asamblea
+st.write("Seleccione el estado de cada reunión o marque los hermanos no disponibles:")
 
 ocupados_por_fecha = {}
 canceladas_por_fecha = {}
 
-with st.expander("📌 Configurar fechas del mes (Ocupados y Cancelaciones)", expanded=True):
+with st.expander("📌 Configurar fechas del mes (Ocupados, Vacaciones y Cancelaciones)", expanded=True):
     for f in fechas_reunion:
         dia_semana = "Miércoles" if f.weekday() == 2 else "Domingo"
         etiqueta = f"{dia_semana} {f.strftime('%d/%m/%Y')}"
         
         st.markdown(f"### 🗓️ {etiqueta}")
         
-        # Checkbox para cancelar la reunión por asamblea
         es_cancelada = st.checkbox(f"❌ Cancelar esta reunión (Asamblea / Sin reunión)", key=f"canc_{f}")
         canceladas_por_fecha[f] = es_cancelada
         
@@ -84,7 +84,7 @@ with st.expander("📌 Configurar fechas del mes (Ocupados y Cancelaciones)", ex
             opciones_totales = sorted(list(set(disp_av + disp_mics)))
             
             ocupados_por_fecha[f] = st.multiselect(
-                f"Hermanos ocupados el {etiqueta}:",
+                f"Hermanos NO disponibles el {etiqueta} (Partes activas, vacaciones, permisos, etc.):",
                 options=opciones_totales,
                 key=f.strftime("%Y-%m-%d")
             )
@@ -93,15 +93,26 @@ with st.expander("📌 Configurar fechas del mes (Ocupados y Cancelaciones)", ex
         
         st.divider()
 
+# Función para priorizar a los que llevan menos asignaciones (Objetivo: ~2 por mes)
+def seleccionar_equilibrado(lista_candidatos, contador_usos, cantidad=1):
+    if not lista_candidatos:
+        return []
+    
+    # Ordenar candidatos por número de veces asignados en el mes
+    candidatos_ordenados = sorted(lista_candidatos, key=lambda h: (contador_usos[h], random.random()))
+    seleccionados = candidatos_ordenados[:cantidad]
+    return seleccionados
+
 # 4. Generación del Programa Mensual
 if st.button("🚀 Generar Programa Completo del Mes"):
     filas_programa = []
     error_detectado = False
     
+    contador_usos = Counter()
+    
     for f in fechas_reunion:
         dia_nombre = "Miércoles" if f.weekday() == 2 else "Domingo"
         
-        # Si la reunión se canceló
         if canceladas_por_fecha[f]:
             filas_programa.append({
                 "Fecha": f.strftime("%d/%m/%Y"),
@@ -135,16 +146,24 @@ if st.button("🚀 Generar Programa Completo del Mes"):
         libres_acom = [h for h in d_acom if h not in ocupados_hoy]
         
         if len(libres_av) >= 2 and len(libres_mics) >= 1 and len(libres_acom) >= 1:
-            publicadores_av = [h for h in libres_av if h not in ancianos_y_ministeriales]
-            ancianos_av = [h for h in libres_av if h in ancianos_y_ministeriales]
-            pool_av = publicadores_av + ancianos_av
-            equipo_av = random.sample(pool_av, 2)
+            # 1. Audio y Video
+            equipo_av = seleccionar_equilibrado(libres_av, contador_usos, cantidad=2)
+            for h in equipo_av:
+                contador_usos[h] += 1
             
+            # 2. Micrófono
             libres_mics_restantes = [h for h in libres_mics if h not in equipo_av]
-            equipo_mics = random.sample(libres_mics_restantes, 1)
+            equipo_mics = seleccionar_equilibrado(libres_mics_restantes, contador_usos, cantidad=1)
+            for h in equipo_mics:
+                contador_usos[h] += 1
             
+            # 3. Acomodador
             libres_acom_restantes = [h for h in libres_acom if h not in equipo_av and h not in equipo_mics]
-            equipo_acom = random.sample(libres_acom_restantes, 1) if libres_acom_restantes else ["Revisar manual"]
+            equipo_acom = seleccionar_equilibrado(libres_acom_restantes, contador_usos, cantidad=1)
+            if equipo_acom:
+                contador_usos[equipo_acom[0]] += 1
+            else:
+                equipo_acom = ["Revisar manual"]
             
             filas_programa.append({
                 "Fecha": f.strftime("%d/%m/%Y"),
@@ -164,6 +183,10 @@ if st.button("🚀 Generar Programa Completo del Mes"):
         st.success(f"¡Programa de {mes_sel} {anio} generado con éxito!")
         st.dataframe(res_df, use_container_width=True)
         
+        with st.expander("📊 Ver resumen de asignaciones por hermano en el mes"):
+            conteo_df = pd.DataFrame(list(contador_usos.items()), columns=["Hermano", "Asignaciones en el mes"]).sort_values(by="Asignaciones en el mes", ascending=False)
+            st.table(conteo_df)
+
         csv_data = res_df.to_csv(index=False).encode('utf-8')
         st.download_button(
             label=f"📥 Descargar Programa Completo de {mes_sel} (.csv)",
