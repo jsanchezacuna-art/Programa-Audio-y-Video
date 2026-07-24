@@ -1,10 +1,20 @@
+import streamlit as st
+import streamlit.components.v1 as components
+
+# Configuración de la página en Streamlit
+st.set_page_config(
+    page_title="Programa de Audio, Video y Salas",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# Código HTML, CSS y JS integrado
+html_code = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <!-- CODER CORRECTO PARA EVITAR CARACTERES RARS (TILDES Y Ñ) -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Programa de Audio, Video y Salas</title>
 
   <!-- LIBRERÍAS EXTERNAS PARA DESCARGAS -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -16,7 +26,7 @@
       font-family: Arial, Helvetica, sans-serif;
       background-color: #f4f6f9;
       margin: 0;
-      padding: 20px;
+      padding: 10px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -27,6 +37,8 @@
       margin-bottom: 20px;
       display: flex;
       gap: 15px;
+      flex-wrap: wrap;
+      justify-content: center;
     }
 
     .btn-descarga {
@@ -55,7 +67,7 @@
     /* CONTENEDOR PRINCIPAL DEL PROGRAMA */
     #contenedor-programa {
       width: 100%;
-      max-width: 1100px;
+      max-width: 1000px;
       background-color: #ffffff;
       border: 1px solid #d0d7de;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
@@ -68,13 +80,13 @@
       background-color: #224b7a;
       color: #ffffff;
       text-align: center;
-      padding: 30px 20px;
+      padding: 25px 15px;
     }
 
     .header-banner h1 {
-      margin: 0 0 10px 0;
+      margin: 0 0 8px 0;
       font-size: 20px;
-      letter-spacing: 1.5px;
+      letter-spacing: 1px;
       text-transform: uppercase;
       font-weight: 600;
     }
@@ -87,7 +99,7 @@
 
     /* TABLA */
     .tabla-contenedor {
-      padding: 20px;
+      padding: 15px;
       overflow-x: auto;
     }
 
@@ -102,13 +114,13 @@
       background-color: #34495e;
       color: #ffffff;
       font-weight: bold;
-      padding: 12px 8px;
+      padding: 10px 6px;
       text-align: center;
       border: 1px solid #34495e;
     }
 
     td {
-      padding: 10px 8px;
+      padding: 9px 6px;
       text-align: center;
       border-bottom: 1px solid #e1e8ed;
       border-right: 1px solid #e1e8ed;
@@ -234,7 +246,6 @@
 
   <!-- LÓGICA JAVASCRIPT DE DESCARGA -->
   <script>
-    // 1. DESCARGAR COMO IMAGEN (PNG ALTA RESOLUCIÓN)
     async function descargarImagen() {
       await document.fonts.ready;
       const elemento = document.getElementById('contenedor-programa');
@@ -251,7 +262,6 @@
       });
     }
 
-    // 2. DESCARGAR COMO PDF (DENTRO DE HOJA HORIZONTAL)
     function descargarPDF() {
       const elemento = document.getElementById('contenedor-programa');
       
@@ -266,7 +276,6 @@
       html2pdf().set(opciones).from(elemento).save();
     }
 
-    // 3. DESCARGAR COMO EXCEL (.XLSX)
     function descargarExcel() {
       const tabla = document.querySelector('#contenedor-programa table');
       
@@ -275,10 +284,13 @@
         return;
       }
 
-      // Genera el libro respetando los acentos y la ñ
       const libro = XLSX.utils.table_to_book(tabla, { sheet: "Programa" });
       XLSX.writeFile(libro, 'Programa_Audio_Video_Salas.xlsx');
     }
   </script>
 </body>
 </html>
+"""
+
+# Renderizar el componente en Streamlit
+components.html(html_code, height=750, scrolling=True)
