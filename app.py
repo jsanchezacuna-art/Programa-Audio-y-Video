@@ -16,7 +16,7 @@ if "programa_guardado" not in st.session_state:
 
 # 1. Base de Hermanos por Rol Exacto
 
-# Audio y Video (Sin Carlos Enrique Pereira)
+# Audio y Video
 hermanos_av = [
     "Carlos Josué Pereira", "José Pereira", "Josué López", 
     "Rodney Alfaro", "Geremy Fernández", "Julio Sánchez", "Dashler Sánchez", 
@@ -36,26 +36,41 @@ ancianos_y_ministeriales = [
     "Javier García", "Elixander Alvarado", "Roger Loaiza", "Walter Sánchez"
 ]
 
-# 2. Selección de Mes y Año
-st.sidebar.header("⚙️ Configuración del Mes")
+# Fecha límite de la visita del SC (23 de Agosto de 2026)
+FECHA_VISITA_SC = datetime.date(2026, 8, 23)
+
+# 2. Selección de Mes, Año y Duración
+st.sidebar.header("⚙️ Configuración del Programa")
 anio = st.sidebar.number_input("Año", min_value=2026, max_value=2030, value=2026)
 mes_nombres = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
 ]
-mes_sel = st.sidebar.selectbox("Seleccione el Mes", mes_nombres, index=6)
+mes_sel = st.sidebar.selectbox("Seleccione el Mes de Inicio", mes_nombres, index=6)
 num_mes = mes_nombres.index(mes_sel) + 1
 
-# Obtener todos los miércoles (2) y domingos (6) del mes seleccionado como base
-num_dias = calendar.monthrange(anio, num_mes)[1]
-fechas_reunion = []
+duracion = st.sidebar.radio("¿Cuántos meses desea generar?", ["1 Mes", "2 Meses"], index=0)
 
-for dia in range(1, num_dias + 1):
-    fecha_dt = datetime.date(anio, num_mes, dia)
-    if fecha_dt.weekday() in [2, 6]: # 2 = Miércoles, 6 = Domingo
-        fechas_reunion.append(fecha_dt)
+# Obtener fechas de reunión (Miércoles/Martes y Domingos)
+def obtener_fechas_mes(m_num, a_num):
+    n_dias = calendar.monthrange(a_num, m_num)[1]
+    f_lista = []
+    for dia in range(1, n_dias + 1):
+        f_dt = datetime.date(a_num, m_num, dia)
+        if f_dt.weekday() in [2, 6]: # 2 = Miércoles, 6 = Domingo
+            f_lista.append(f_dt)
+    return f_lista
 
-st.subheader(f"🗓️ Reuniones para {mes_sel} {anio}: {len(fechas_reunion)} fechas encontradas")
+fechas_reunion = obtener_fechas_mes(num_mes, anio)
+
+# Si se seleccionaron 2 meses, agregar el mes siguiente
+if duracion == "2 Meses":
+    siguiente_mes = num_mes + 1 if num_mes < 12 else 1
+    siguiente_anio = anio if num_mes < 12 else anio + 1
+    fechas_reunion += obtener_fechas_mes(siguiente_mes, siguiente_anio)
+
+texto_rango = f"{mes_sel} {anio}" if duracion == "1 Mes" else f"{mes_sel} y {mes_nombres[(num_mes % 12)]} {anio}"
+st.subheader(f"🗓️ Reuniones para {texto_rango}: {len(fechas_reunion)} fechas encontradas")
 
 # 3. Formulario para marcar ocupados, cambio de día (Visita SC) o cancelaciones
 st.write("Seleccione el estado de cada reunión, ajuste días por visita del SC o marque los no disponibles:")
@@ -94,9 +109,10 @@ with st.expander("📌 Configurar fechas del mes (Ocupados, Visita SC y Cancelac
         canceladas_por_fecha[f] = es_cancelada
         
         if not es_cancelada:
-            visita_sc_pasada = fecha_efectiva > datetime.date(2026, 8, 23)
+            visita_sc_pasada = fecha_efectiva > FECHA_VISITA_SC
             es_septiembre_o_mas = fecha_efectiva.month >= 9
             
+            # Filtrar hermanos que se van después de la visita (Geremy y Roger)
             disp_av = hermanos_av.copy()
             if visita_sc_pasada and "Geremy Fernández" in disp_av:
                 disp_av.remove("Geremy Fernández")
@@ -105,7 +121,14 @@ with st.expander("📌 Configurar fechas del mes (Ocupados, Visita SC y Cancelac
             if es_septiembre_o_mas:
                 disp_mics.append("Iván Chavarría")
 
-            opciones_totales = sorted(list(set(disp_av + disp_mics + ancianos_y_ministeriales)))
+            disp_acom = ancianos_y_ministeriales.copy()
+            if visita_sc_pasada:
+                if "Geremy Fernández" in disp_acom:
+                    disp_acom.remove("Geremy Fernández")
+                if "Roger Loaiza" in disp_acom:
+                    disp_acom.remove("Roger Loaiza")
+
+            opciones_totales = sorted(list(set(disp_av + disp_mics + disp_acom)))
             
             ocupados_por_fecha[f] = st.multiselect(
                 f"Hermanos NO disponibles el {dia_real} {fecha_efectiva.strftime('%d/%m/%Y')}:",
@@ -134,8 +157,8 @@ def seleccionar_equilibrado(lista_candidatos, contador_usos, cantidad=1):
     seleccionados = candidatos_ordenados[:cantidad]
     return seleccionados
 
-# 4. Generación del Programa Mensual
-if st.button("🚀 Generar Programa Completo del Mes"):
+# 4. Generación del Programa Mensual / Bimestral
+if st.button("🚀 Generar Programa Completo"):
     filas_programa = []
     error_detectado = False
     
@@ -156,9 +179,10 @@ if st.button("🚀 Generar Programa Completo del Mes"):
             })
             continue
 
-        visita_sc_pasada = fecha_efectiva > datetime.date(2026, 8, 23)
+        visita_sc_pasada = fecha_efectiva > FECHA_VISITA_SC
         es_septiembre_o_mas = fecha_efectiva.month >= 9
         
+        # Aplicar bajas de la congregación automáticamente tras la visita
         d_av = hermanos_av.copy()
         if visita_sc_pasada and "Geremy Fernández" in d_av:
             d_av.remove("Geremy Fernández")
@@ -168,8 +192,11 @@ if st.button("🚀 Generar Programa Completo del Mes"):
             d_mics.append("Iván Chavarría")
             
         d_acom = ancianos_y_ministeriales.copy()
-        if visita_sc_pasada and "Geremy Fernández" in d_acom:
-            d_acom.remove("Geremy Fernández")
+        if visita_sc_pasada:
+            if "Geremy Fernández" in d_acom:
+                d_acom.remove("Geremy Fernández")
+            if "Roger Loaiza" in d_acom:
+                d_acom.remove("Roger Loaiza")
             
         ocupados_hoy = ocupados_por_fecha[f]
         
@@ -207,9 +234,8 @@ if st.button("🚀 Generar Programa Completo del Mes"):
             error_detectado = True
 
     if not error_detectado and len(filas_programa) == len(fechas_reunion):
-        # Guardar en la sesión de la app
         st.session_state["programa_guardado"] = pd.DataFrame(filas_programa)
-        st.success(f"¡Programa de {mes_sel} {anio} generado y guardado en memoria!")
+        st.success(f"¡Programa generado con éxito para {texto_rango}!")
 
 # 5. Sección de Visualización, Edición Manual y Descarga
 if st.session_state["programa_guardado"] is not None:
@@ -217,17 +243,15 @@ if st.session_state["programa_guardado"] is not None:
     st.subheader("📝 Edición Manual y Descarga del Programa")
     st.info("💡 Puedes hacer doble clic sobre cualquier casilla de la tabla para cambiar un hermano manualmente si lo necesitas.")
     
-    # Tabla editable interactiva
     df_editable = st.data_editor(
         st.session_state["programa_guardado"], 
         use_container_width=True,
         num_rows="fixed"
     )
     
-    # Botón para descargar la versión (original o editada)
     csv_data = df_editable.to_csv(index=False).encode('utf-8')
     st.download_button(
-        label=f"📥 Descargar Programa Final de {mes_sel} (.csv)",
+        label=f"📥 Descargar Programa Final (.csv)",
         data=csv_data,
         file_name=f"Programa_AV_{mes_sel}_{anio}.csv",
         mime="text/csv"
