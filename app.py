@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import random
+import datetime
 import io
 
 st.set_page_config(page_title="Programa Audio, Video y Salas", layout="centered")
@@ -21,8 +22,9 @@ hermanos_solo_mics = ["Rafael Segura", "Kenneth Solís", "Walter Sánchez"]
 st.sidebar.header("⚙️ Configuración del Mes")
 fecha = st.sidebar.date_input("Seleccione la fecha de la reunión")
 
+# Corrección de comparación de fechas usando datetime.date
 es_septiembre_o_mas = fecha.month >= 9
-visita_sc_pasada = fecha > pd.to_datetime("2026-08-23")
+visita_sc_pasada = fecha > datetime.date(2026, 8, 23)
 
 # Control por traslado de Geremy Fernández tras la visita del SC
 disponibles_av = hermanos_av.copy()
@@ -47,35 +49,36 @@ if st.button("🚀 Generar Programa y Exportar"):
     libres_av = [h for h in disponibles_av if h not in ocupados]
     libres_mics = [h for h in (disponibles_av + disponibles_mics) if h not in ocupados]
     
-    if len(libres_av) >= 2 and len(libres_mics) >= 4:
+    if len(libres_av) >= 2 and len(libres_mics) >= 3:
         equipo_av = random.sample(libres_av, 2)
         
         # Evitar duplicar en la misma reunión
         libres_mics_restantes = [h for h in libres_mics if h not in equipo_av]
-        equipo_mics = random.sample(libres_mics_restantes, 2)
+        
+        # Validación de cantidad de libres para micrófonos y acomodador
+        num_mics = min(2, len(libres_mics_restantes))
+        equipo_mics = random.sample(libres_mics_restantes, num_mics)
         
         libres_acom = [h for h in libres_mics_restantes if h not in equipo_mics]
-        equipo_acom = random.sample(libres_acom, 1)
+        equipo_acom = random.sample(libres_acom, 1) if libres_acom else ["Sin asignar"]
+
+        puestos = ["Encargado de Audio", "Encargado de Video"]
+        asignados = [equipo_av[0], equipo_av[1]]
+
+        for i, m in enumerate(equipo_mics):
+            puestos.append(f"Plataforma y Micrófonos {i+1}")
+            asignados.append(m)
+
+        puestos.append("Acomodador")
+        asignados.append(equipo_acom[0])
 
         # Matriz para la tabla
         res_df = pd.DataFrame({
-            "Función": [
-                "Encargado de Audio",
-                "Encargado de Video",
-                "Plataforma y Micrófonos",
-                "Plataforma y Micrófonos",
-                "Acomodador"
-            ],
-            "Hermano Asignado": [
-                equipo_av[0],
-                equipo_av[1],
-                equipo_mics[0],
-                equipo_mics[1],
-                equipo_acom[0]
-            ]
+            "Función": puestos,
+            "Hermano Asignado": asignados
         })
         
-        st.success("¡Programa calculated con éxito!")
+        st.success("¡Programa calculado con éxito!")
         st.table(res_df)
         
         # Botón para descargar directo a Excel
