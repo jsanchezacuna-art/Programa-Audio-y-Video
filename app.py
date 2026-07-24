@@ -16,16 +16,13 @@ MESES_LISTA = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
 ]
-
 MESES_DICT = {nombre: i + 1 for i, nombre in enumerate(MESES_LISTA)}
-
 DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 
 # --- FUNCIÓN PARA GENERAR FECHAS AUTOMÁTICAS ---
 def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles"):
     dias_map = {"Lunes": 0, "Martes": 1, "Miércoles": 2, "Jueves": 3, "Viernes": 4, "Sábado": 5, "Domingo": 6}
     target_midweek = dias_map.get(dia_entre_semana, 2)
-    
     reuniones_generadas = []
     
     for mes_nombre in meses_seleccionados:
@@ -34,47 +31,32 @@ def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles
         
         for dia in range(1, num_dias + 1):
             dt = datetime.date(anio, mes_num, dia)
-            # Entre semana habitual
             if dt.weekday() == target_midweek:
                 reuniones_generadas.append({
                     "dt": dt,
                     "fecha": dt.strftime("%d/%m/%Y"),
                     "dia": dia_entre_semana,
                     "sin_reunion": False,
-                    "responsables": [],
-                    "audio": "-- Sin asignar --",
-                    "video": "-- Sin asignar --",
-                    "mic": "-- Sin asignar --",
-                    "acomodador": "-- Sin asignar --"
+                    "responsables": []
                 })
-            # Fin de semana (Domingo)
             elif dt.weekday() == 6:
                 reuniones_generadas.append({
                     "dt": dt,
                     "fecha": dt.strftime("%d/%m/%Y"),
                     "dia": "Domingo",
                     "sin_reunion": False,
-                    "responsables": [],
-                    "audio": "-- Sin asignar --",
-                    "video": "-- Sin asignar --",
-                    "mic": "-- Sin asignar --",
-                    "acomodador": "-- Sin asignar --"
+                    "responsables": []
                 })
                 
-    # Ordenar por fecha cronológica
     reuniones_generadas.sort(key=lambda x: x["dt"])
     return reuniones_generadas
-
 
 # --- 1. BARRA LATERAL (CONFIGURACIÓN DE AÑO, MESES Y HERMANOS) ---
 with st.sidebar:
     st.header("⚙️ Configuración del Período")
     congregacion = st.text_input("Nombre de la Congregación", "El Gallito")
     
-    # SELECCIÓN DE AÑO Y CANTIDAD DE MESES
-    anio_actual = datetime.datetime.now().year
     anio = st.number_input("Año", min_value=2024, max_value=2035, value=2026, step=1)
-    
     cant_meses = st.radio("Cantidad de Meses a programar:", ["1 Mes", "2 Meses"], index=1)
     
     col_m1, col_m2 = st.columns(2)
@@ -82,7 +64,6 @@ with st.sidebar:
         mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=7) # Agosto por defecto
     
     meses_seleccionados = [mes_1]
-    
     if cant_meses == "2 Meses":
         with col_m2:
             idx_m2 = (MESES_LISTA.index(mes_1) + 1) % 12
@@ -123,7 +104,6 @@ with st.sidebar:
     hermanos_texto = st.text_area("Hermanos registrados (uno por línea):", value="\n".join(hermanos_defecto), height=240)
     lista_hermanos = [h.strip() for h in hermanos_texto.split("\n") if h.strip()]
 
-
 # --- 2. INICIALIZACIÓN DE SESIÓN DE REUNIONES ---
 if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
     st.session_state.reuniones = generar_fechas_meses(
@@ -132,7 +112,8 @@ if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
         dia_entre_semana=dia_habitual_entre_semana
     )
 
-st.subheader(f"🗓️ Programación de Fechas — {periodo_str}")
+st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
+st.info("👉 **Instrucciones:** Selecciona **únicamente** a los hermanos que tienen responsabilidades (Presidencia, Discursos, Plataforma, etc.). El sistema asignará **automáticamente** los puestos de Audio, Video, Micrófono y Acomodador con los hermanos disponibles.")
 
 col_btn1, col_btn2 = st.columns([3, 7])
 with col_btn1:
@@ -141,17 +122,16 @@ with col_btn1:
             "fecha": f"01/{MESES_DICT[mes_1]:02d}/{anio}",
             "dia": "Miércoles",
             "sin_reunion": False,
-            "responsables": [],
-            "audio": "-- Sin asignar --",
-            "video": "-- Sin asignar --",
-            "mic": "-- Sin asignar --",
-            "acomodador": "-- Sin asignar --"
+            "responsables": []
         })
         st.rerun()
 
+# --- 3. EDITOR DE OCUPADOS Y CÁLCULO AUTOMÁTICO ---
 datos_programa_final = []
 
-# --- 3. EDITOR DE REUNIONES POR FECHA ---
+# Punteros para rotación equitativa automática
+idx_rotacion = 0
+
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
@@ -161,7 +141,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
             
         with col_f2:
             idx_dia = DIAS_SEMANA.index(reun['dia']) if reun['dia'] in DIAS_SEMANA else 2
-            reun['dia'] = st.selectbox("Día de la reunión", DIAS_SEMANA, index=idx_dia, key=f"dia_{idx}", help="Puedes cambiar el día (por ejemplo, pasar de miércoles a martes).")
+            reun['dia'] = st.selectbox("Día de la reunión", DIAS_SEMANA, index=idx_dia, key=f"dia_{idx}")
             
         with col_f3:
             reun['sin_reunion'] = st.checkbox("🚫 CANCELAR SEMANA / ASAMBLEA", value=reun['sin_reunion'], key=f"sin_reunion_{idx}")
@@ -184,46 +164,37 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 "Acomodador": "--- NO HAY REUNIÓN ---"
             })
         else:
-            st.markdown("---")
-            # PASO 1: RESPONSABILIDADES PRINCIPALES
-            st.markdown("**1️⃣ Selecciona hermanos con asignación principal (Presidencia, Discursos, Plataforma, Lector, etc.):**")
+            # SELECCIÓN DE OCUPADOS
             resp_validos = [h for h in reun.get('responsables', []) if h in lista_hermanos]
             reun['responsables'] = st.multiselect(
-                "Hermanos ocupados este día:",
+                "🙋‍♂️ Hermanos con responsabilidades (Presidencia, Discursos, Lector, etc.):",
                 options=lista_hermanos,
                 default=resp_validos,
-                key=f"resp_{idx}"
+                key=f"resp_{idx}",
+                help="Estos hermanos NO serán asignados automáticamente a Audio, Video, Micrófono ni Acomodador."
             )
             
-            # FILTRO DE DISPONIBLES
+            # CÁLCULO DE DISPONIBLES Y ASIGNACIÓN AUTOMÁTICA ROTATIVA
             disponibles = [h for h in lista_hermanos if h not in reun['responsables']]
-            options_with_empty = ["-- Sin asignar --"] + disponibles
+            
+            asig_auto = {"audio": "", "video": "", "mic": "", "acomodador": ""}
+            
+            if len(disponibles) > 0:
+                puestos = ["audio", "video", "mic", "acomodador"]
+                for p_idx, puesto in enumerate(puestos):
+                     hermano_elegido = disponibles[(idx_rotacion + p_idx) % len(disponibles)]
+                     asig_auto[puesto] = hermano_elegido
+                idx_rotacion += 4 # Avanza en la lista para la siguiente fecha
 
-            # PASO 2: ASIGNACIÓN AUDIO Y VIDEO
-            st.markdown("**2️⃣ Asigna Audio, Video, Micrófono y Acomodador (Solo hermanos disponibles):**")
-            st.caption(f"🟢 Quedan **{len(disponibles)}** hermanos disponibles.")
-
-            col_a1, col_a2, col_a3, col_a4 = st.columns(4)
-
-            def get_index(val, options):
-                return options.index(val) if val in options else 0
-
-            with col_a1:
-                reun['audio'] = st.selectbox("Audio", options_with_empty, index=get_index(reun.get('audio', ''), options_with_empty), key=f"audio_{idx}")
-            with col_a2:
-                reun['video'] = st.selectbox("Video", options_with_empty, index=get_index(reun.get('video', ''), options_with_empty), key=f"video_{idx}")
-            with col_a3:
-                reun['mic'] = st.selectbox("Micrófono", options_with_empty, index=get_index(reun.get('mic', ''), options_with_empty), key=f"mic_{idx}")
-            with col_a4:
-                reun['acomodador'] = st.selectbox("Acomodador", options_with_empty, index=get_index(reun.get('acomodador', ''), options_with_empty), key=f"aco_{idx}")
+            st.caption(f"🤖 **Asignación automática generada:** Audio: *{asig_auto['audio']}* | Video: *{asig_auto['video']}* | Mic: *{asig_auto['mic']}* | Acomodador: *{asig_auto['acomodador']}*")
 
             datos_programa_final.append({
                 "Fecha": reun['fecha'],
                 "Día": reun['dia'],
-                "Audio": reun['audio'] if reun['audio'] != "-- Sin asignar --" else "",
-                "Video": reun['video'] if reun['video'] != "-- Sin asignar --" else "",
-                "Micrófono": reun['mic'] if reun['mic'] != "-- Sin asignar --" else "",
-                "Acomodador": reun['acomodador'] if reun['acomodador'] != "-- Sin asignar --" else ""
+                "Audio": asig_auto['audio'],
+                "Video": asig_auto['video'],
+                "Micrófono": asig_auto['mic'],
+                "Acomodador": asig_auto['acomodador']
             })
 
 # --- 4. PLANTILLA HTML PARA VISTA PREVIA Y DESCARGAS ---
@@ -376,5 +347,5 @@ html_code = f"""
 """
 
 st.markdown("---")
-st.subheader("👁️ Vista Previa Final")
+st.subheader("👁️ Vista Previa Final (Generada Automáticamente)")
 components.html(html_code, height=750, scrolling=True)
