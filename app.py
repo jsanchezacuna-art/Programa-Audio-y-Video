@@ -12,24 +12,24 @@ st.caption("Congregación Gallito, San José de la Montaña")
 
 # 1. Base de Hermanos por Rol Exacto
 
-# Audio y Video (Sin Carlos Blanco ni Elixander Alvarado)
+# Audio y Video (Se remueve a Carlos Enrique Pereira)
 hermanos_av = [
-    "Carlos Josué Pereira", "Carlos Enrique Pereira", "José Pereira", "Josué López", 
+    "Carlos Josué Pereira", "José Pereira", "Josué López", 
     "Rodney Alfaro", "Geremy Fernández", "Julio Sánchez", "Dashler Sánchez", 
     "Sebastián Montero", "David Herrera", "José Alberto González", "Javier García"
 ]
 
-# Exclusivos/dedicados a micrófonos y apoyo (Incluye a Iván Zamora)
+# Exclusivos/dedicados a micrófonos y apoyo (Carlos Blanco solo aquí)
 hermanos_solo_mics = [
     "Rafael Segura", "Kenneth Solís", "Walter Sánchez", 
     "Iván Zamora", "Carlos Blanco", "Elixander Alvarado"
 ]
 
-# Acomodadores (Ancianos, Siervos Ministeriales + Elixander Alvarado + Roger Loaiza)
+# Acomodadores (Ancianos, SM + Elixander Alvarado + Roger Loaiza + Carlos Enrique Pereira + Walter Sánchez)
 ancianos_y_ministeriales = [
-    "Carlos Josué Pereira", "José Pereira", "Josué López", "Rodney Alfaro",
+    "Carlos Josué Pereira", "Carlos Enrique Pereira", "José Pereira", "Josué López", "Rodney Alfaro",
     "Geremy Fernández", "Julio Sánchez", "David Herrera", "José Alberto González",
-    "Javier García", "Elixander Alvarado", "Roger Loaiza"
+    "Javier García", "Elixander Alvarado", "Roger Loaiza", "Walter Sánchez"
 ]
 
 # 2. Selección de Mes y Año
