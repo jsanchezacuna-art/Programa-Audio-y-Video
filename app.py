@@ -150,11 +150,11 @@ with st.sidebar:
     aco_txt = st.text_area("🚪 Autorizados para Acomodadores:", value="\n".join(aco_defecto), height=160)
     hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
 
-    # Lista unificada de todos los hermanos disponibles
+    # Lista unificada
     todos_hermanos = sorted(list(set(hermanos_av + hermanos_aco + ["Iván Zamora", "Carlos Blanco", "Kenneth Solís"])))
 
-    # 3. Micrófonos (Participan TODOS por defecto)
-    mic_txt = st.text_area("🎤 Autorizados para Micrófonos (Todos participan):", value="\n".join(todos_hermanos), height=180)
+    # 3. Micrófonos
+    mic_txt = st.text_area("🎤 Autorizados para Micrófonos:", value="\n".join(todos_hermanos), height=180)
     hermanos_mic = [h.strip() for h in mic_txt.split("\n") if h.strip()]
 
 # --- 2. INICIALIZACIÓN DE SESIÓN ---
@@ -166,16 +166,17 @@ if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
     )
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("👉 Selecciona a los hermanos ocupados ese día. El sistema rotará **Audio, Video, Micrófonos y Acomodadores** garantizando alternancia de días (miércoles/domingo).")
+st.info("👉 Selecciona a los hermanos ocupados ese día. El sistema regulará a **Iván Zamora** a máximo 2 veces al mes en micrófonos y rotará al resto alternando días.")
 
 datos_programa_final = []
 
 # Rastreo de conteo total e historia de asignaciones
 conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
 ultimo_puesto_av = {h: None for h in hermanos_av}
-ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}  # Registra 'EntreSemana' o 'Domingo' para micrófonos
+ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
+conteo_ivan_mes = {}  # Guarda 'clave_mes' -> cantidad asignada a Iván Zamora
 
-# --- 3. ALGORITMO DE ASIGNACIÓN CON ALTERNANCIA ---
+# --- 3. ALGORITMO DE ASIGNACIÓN CON REGLA ESPECIAL PARA IVÁN ---
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
@@ -216,6 +217,13 @@ for idx, reun in enumerate(st.session_state.reuniones):
             excluidos = set(reun['responsables'])
             es_domingo = (reun['dia'] == "Domingo")
             tipo_dia_actual = "Domingo" if es_domingo else "EntreSemana"
+            
+            # Obtener el mes actual de la reunión para limitar a Iván Zamora
+            try:
+                dt_obj = datetime.datetime.strptime(reun['fecha'], "%d/%m/%Y")
+                clave_mes = dt_obj.strftime("%Y-%m")
+            except Exception:
+                clave_mes = "actual"
 
             # 1. ASIGNAR AUDIO
             candidatos_audio = [h for h in hermanos_av if h not in excluidos]
@@ -245,7 +253,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
             if h_video:
                 excluidos.add(h_video)
 
-            # Actualizar historial de Audio/Video
+            # Actualizar historial Audio/Video
             if h_audio:
                 conteo_acumulado[h_audio] = conteo_acumulado.get(h_audio, 0) + 1
                 ultimo_puesto_av[h_audio] = 'Audio'
@@ -253,22 +261,28 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 conteo_acumulado[h_video] = conteo_acumulado.get(h_video, 0) + 1
                 ultimo_puesto_av[h_video] = 'Video'
 
-            # 3. ASIGNAR MICRÓFONO (Participan todos con alternancia entre semana / domingo)
+            # 3. ASIGNAR MICRÓFONO
             candidatos_mic = [h for h in hermanos_mic if h not in excluidos]
             if not candidatos_mic:
                 candidatos_mic = [h for h in todos_hermanos if h not in excluidos]
-            
-            # Priorizar menor conteo total, y luego a quien no le tocó el mismo tipo de día la vez pasada
+
+            # REGLA: Si Iván Zamora ya cumplió sus 2 asignaciones del mes, se excluye de candidatos en lo que queda del mes
+            if conteo_ivan_mes.get(clave_mes, 0) >= 2:
+                candidatos_mic = [h for h in candidatos_mic if "Iván Zamora" not in h]
+
             candidatos_mic.sort(key=lambda h: (
                 conteo_acumulado.get(h, 0),
                 1 if ultimo_tipo_dia_mic.get(h) == tipo_dia_actual else 0
             ))
-            
+
             h_mic = candidatos_mic[0] if candidatos_mic else ""
             if h_mic:
                 excluidos.add(h_mic)
                 conteo_acumulado[h_mic] = conteo_acumulado.get(h_mic, 0) + 1
                 ultimo_tipo_dia_mic[h_mic] = tipo_dia_actual
+                
+                if "Iván Zamora" in h_mic:
+                    conteo_ivan_mes[clave_mes] = conteo_ivan_mes.get(clave_mes, 0) + 1
 
             # 4. ASIGNAR ACOMODADOR
             candidatos_aco = [h for h in hermanos_aco if h not in excluidos]
@@ -280,7 +294,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 excluidos.add(h_aco)
                 conteo_acumulado[h_aco] = conteo_acumulado.get(h_aco, 0) + 1
 
-            st.caption(f"🤖 **Asignación alternada:** Audio: *{h_audio}* | Video: *{h_video}* | Mic: *{h_mic}* | Acomodador: *{h_aco}*")
+            st.caption(f"🤖 **Asignación:** Audio: *{h_audio}* | Video: *{h_video}* | Mic: *{h_mic}* | Acomodador: *{h_aco}*")
 
             datos_programa_final.append({
                 "Fecha": reun['fecha'],
