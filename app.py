@@ -122,7 +122,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("👥 Hermanos Autorizados por Puesto")
 
-    # 1. Audio y Video (Actualizado con Julio Sánchez, Dáshler Sánchez, Rodney Alfaro y Kenneth Solís)
+    # 1. Audio y Video (Incluye Josué López)
     av_defecto = [
         "José Pereira",
         "José Alberto González",
@@ -134,14 +134,18 @@ with st.sidebar:
         "Julio Sánchez",
         "Dáshler Sánchez",
         "Rodney Alfaro",
-        "Kenneth Solís"
+        "Kenneth Solís",
+        "Josué López"
     ]
-    av_txt = st.text_area("🎧🖥️ Autorizados para Audio y Video:", value="\n".join(av_defecto), height=180)
+    av_txt = st.text_area("🎧🖥️ Autorizados para Audio y Video:", value="\n".join(av_defecto), height=200)
     hermanos_av = [h.strip() for h in av_txt.split("\n") if h.strip()]
 
-    # EXCEPCIÓN: SOLO AUDIO
-    solo_audio_defecto = ["José Alberto González"]
-    solo_audio_txt = st.text_area("⚠️ Hermanos autorizados SOLO para Audio (No Video):", value="\n".join(solo_audio_defecto), height=60)
+    # EXCEPCIÓN: SOLO AUDIO (Incluye José Alberto González y David Herrera)
+    solo_audio_defecto = [
+        "José Alberto González",
+        "David Herrera"
+    ]
+    solo_audio_txt = st.text_area("⚠️ Hermanos autorizados SOLO para Audio (No Video):", value="\n".join(solo_audio_defecto), height=80)
     hermanos_solo_audio = [h.strip() for h in solo_audio_txt.split("\n") if h.strip()]
 
     # 2. Acomodadores
@@ -180,7 +184,7 @@ if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
     )
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("👉 **Notas activas:** Julio Sánchez, Dáshler Sánchez, Rodney Alfaro y Kenneth Solís agregados a Audio/Video. Carlos Enrique Pereira fuera de micrófonos. Roger Loaiza (solo acomodador entre semana hasta 23/08/2026). Geremy Fernández (hasta 23/08/2026). Iván Zamora (máx. 2 veces/mes en micros).")
+st.info("👉 **Notas activas:** David Herrera y José Alberto González autorizados SOLO para Audio. Josué López en Audio/Video. Carlos Enrique Pereira fuera de micrófonos. Roger Loaiza (solo acomodador entre semana hasta 23/08/2026). Geremy Fernández (hasta 23/08/2026). Iván Zamora (máx. 2 veces/mes en micros).")
 
 datos_programa_final = []
 
@@ -261,7 +265,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
             if h_audio:
                 excluidos.add(h_audio)
 
-            # 2. ASIGNAR VIDEO
+            # 2. ASIGNAR VIDEO (Excluye hermanos_solo_audio: José Alberto González y David Herrera)
             candidatos_video = [h for h in hermanos_av if h not in excluidos and h not in hermanos_solo_audio and h != "Roger Loaiza"]
             if candidatos_video:
                 candidatos_video.sort(key=lambda h: (
