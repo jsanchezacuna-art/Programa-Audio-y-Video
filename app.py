@@ -122,9 +122,21 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("👥 Hermanos Autorizados por Puesto")
 
-    # 1. Audio y Video
-    av_defecto = ["José Pereira", "José Alberto González", "Carlos Josué Pereira", "Javier García", "Sebastián Montero", "David Herrera", "Geremy Fernández"]
-    av_txt = st.text_area("🎧🖥️ Autorizados para Audio y Video:", value="\n".join(av_defecto), height=130)
+    # 1. Audio y Video (Actualizado con Julio Sánchez, Dáshler Sánchez, Rodney Alfaro y Kenneth Solís)
+    av_defecto = [
+        "José Pereira",
+        "José Alberto González",
+        "Carlos Josué Pereira",
+        "Javier García",
+        "Sebastián Montero",
+        "David Herrera",
+        "Geremy Fernández",
+        "Julio Sánchez",
+        "Dáshler Sánchez",
+        "Rodney Alfaro",
+        "Kenneth Solís"
+    ]
+    av_txt = st.text_area("🎧🖥️ Autorizados para Audio y Video:", value="\n".join(av_defecto), height=180)
     hermanos_av = [h.strip() for h in av_txt.split("\n") if h.strip()]
 
     # EXCEPCIÓN: SOLO AUDIO
@@ -151,10 +163,10 @@ with st.sidebar:
     aco_txt = st.text_area("🚪 Autorizados para Acomodadores:", value="\n".join(aco_defecto), height=160)
     hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
 
-    # Lista unificada de todos los hermanos (Incluye a Dashler Sánchez)
-    todos_hermanos = sorted(list(set(hermanos_av + hermanos_aco + ["Iván Zamora", "Carlos Blanco", "Kenneth Solís", "Dashler Sánchez"])))
+    # Lista unificada de todos los hermanos
+    todos_hermanos = sorted(list(set(hermanos_av + hermanos_aco + ["Iván Zamora", "Carlos Blanco"])))
 
-    # 3. Micrófonos (Se excluye a Carlos Enrique Pereira y se incluye a Dashler Sánchez)
+    # 3. Micrófonos (Excluye Carlos Enrique Pereira)
     mic_defecto = [h for h in todos_hermanos if h != "Carlos Enrique Pereira"]
     mic_txt = st.text_area("🎤 Autorizados para Micrófonos:", value="\n".join(mic_defecto), height=180)
     hermanos_mic = [h.strip() for h in mic_txt.split("\n") if h.strip()]
@@ -168,7 +180,7 @@ if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
     )
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("👉 **Notas activas:** Carlos Enrique Pereira fuera de micrófonos. Dashler Sánchez agregado a micrófonos. Roger Loaiza (solo acomodador entre semana hasta 23/08/2026). Geremy Fernández (hasta 23/08/2026). Iván Zamora (máx. 2 veces/mes en micros).")
+st.info("👉 **Notas activas:** Julio Sánchez, Dáshler Sánchez, Rodney Alfaro y Kenneth Solís agregados a Audio/Video. Carlos Enrique Pereira fuera de micrófonos. Roger Loaiza (solo acomodador entre semana hasta 23/08/2026). Geremy Fernández (hasta 23/08/2026). Iván Zamora (máx. 2 veces/mes en micros).")
 
 datos_programa_final = []
 
@@ -271,7 +283,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 conteo_acumulado[h_video] = conteo_acumulado.get(h_video, 0) + 1
                 ultimo_puesto_av[h_video] = 'Video'
 
-            # 3. ASIGNAR MICRÓFONO (Excluye Carlos Enrique Pereira, incluye a Dashler Sánchez)
+            # 3. ASIGNAR MICRÓFONO
             candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Roger Loaiza" and h != "Carlos Enrique Pereira"]
             if not candidatos_mic:
                 candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Roger Loaiza" and h != "Carlos Enrique Pereira"]
