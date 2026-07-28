@@ -6,11 +6,11 @@ import pandas as pd
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Programa de Audio, Video y Salas",
+    page_title="Programa de Audio, Video, Micrófono y Acomodador",
     layout="wide"
 )
 
-st.title("📋 Generador de Programa de Audio, Video y Salas")
+st.title("📋 Generador de Programa de Audio, Video, Micrófono y Acomodador")
 
 # --- DICCIONARIOS Y DÍAS ---
 MESES_LISTA = [
@@ -20,6 +20,7 @@ MESES_LISTA = [
 MESES_DICT = {nombre: i + 1 for i, nombre in enumerate(MESES_LISTA)}
 DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 FECHA_CORTE_SALIDA = datetime.date(2026, 8, 23)
+DIAS_DESCANSO_MINIMO = 10  # Días mínimos entre asignaciones para el mismo hermano
 
 def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles"):
     dias_map = {"Lunes": 0, "Martes": 1, "Miércoles": 2, "Jueves": 3, "Viernes": 4, "Sábado": 5, "Domingo": 6}
@@ -112,6 +113,8 @@ with st.sidebar:
                 if col in df_hist.columns:
                     for nombre in df_hist[col].dropna():
                         nom_str = str(nombre).strip()
+                        if "Zamora" in nom_str:
+                            nom_str = nom_str.replace("Zamora", "Chavarría")
                         if nom_str and "NO HAY" not in nom_str and nom_str != "-- Sin asignar --":
                             conteo_historial[nom_str] = conteo_historial.get(nom_str, 0) + 1
             st.success(f"¡Historial cargado con éxito!")
@@ -122,7 +125,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("👥 Hermanos Autorizados por Puesto")
 
-    # 1. Audio y Video (Incluye Josué López)
+    # 1. Audio y Video
     av_defecto = [
         "José Pereira",
         "José Alberto González",
@@ -140,7 +143,7 @@ with st.sidebar:
     av_txt = st.text_area("🎧🖥️ Autorizados para Audio y Video:", value="\n".join(av_defecto), height=200)
     hermanos_av = [h.strip() for h in av_txt.split("\n") if h.strip()]
 
-    # EXCEPCIÓN: SOLO AUDIO (Incluye José Alberto González y David Herrera)
+    # EXCEPCIÓN: SOLO AUDIO
     solo_audio_defecto = [
         "José Alberto González",
         "David Herrera"
@@ -168,7 +171,7 @@ with st.sidebar:
     hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
 
     # Lista unificada de todos los hermanos
-    todos_hermanos = sorted(list(set(hermanos_av + hermanos_aco + ["Iván Zamora", "Carlos Blanco"])))
+    todos_hermanos = sorted(list(set(hermanos_av + hermanos_aco + ["Iván Chavarría", "Carlos Blanco"])))
 
     # 3. Micrófonos (Excluye Carlos Enrique Pereira)
     mic_defecto = [h for h in todos_hermanos if h != "Carlos Enrique Pereira"]
@@ -184,7 +187,7 @@ if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
     )
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("👉 **Notas activas:** David Herrera y José Alberto González autorizados SOLO para Audio. Josué López en Audio/Video. Carlos Enrique Pereira fuera de micrófonos. Roger Loaiza (solo acomodador entre semana hasta 23/08/2026). Geremy Fernández (hasta 23/08/2026). Iván Zamora (máx. 2 veces/mes en micros).")
+st.info("👉 **Regla nueva activa:** Carlos Blanco y Walter Sánchez solo asignados a Micrófonos los días domingo.")
 
 datos_programa_final = []
 
@@ -192,9 +195,10 @@ datos_programa_final = []
 conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
 ultimo_puesto_av = {h: None for h in hermanos_av}
 ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
+ultima_fecha_asignado = {h: None for h in todos_hermanos}
 conteo_ivan_mes = {}
 
-# --- 3. ALGORITMO DE ASIGNACIÓN ---
+# --- 3. ALGORITMO DE ASIGNACIÓN CON DESCANSO OBLIGATORIO ---
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
@@ -236,7 +240,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
             es_domingo = (reun['dia'] == "Domingo")
             tipo_dia_actual = "Domingo" if es_domingo else "EntreSemana"
             
-            # Obtención de fecha objeto
+            # Fecha objeto actual
             try:
                 dt_obj = datetime.datetime.strptime(reun['fecha'], "%d/%m/%Y").date()
                 clave_mes = dt_obj.strftime("%Y-%m")
@@ -251,13 +255,31 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 excluidos.add("Roger Loaiza")
                 excluidos.add("Geremy Fernández")
 
+            # Función de ordenamiento considerando descanso en días
+            def score_candidato(hermano, ultimo_puesto_deseado=None, es_mic=False):
+                dias_desde_ultimo = 999
+                if ultima_fecha_asignado.get(hermano) is not None:
+                    dias_desde_ultimo = (dt_obj - ultima_fecha_asignado[hermano]).days
+                
+                # Penalización severa si tiene menos de DIAS_DESCANSO_MINIMO días de haber servido
+                penalizacion_descanso = 1000 if dias_desde_ultimo < DIAS_DESCANSO_MINIMO else 0
+                
+                conteo = conteo_acumulado.get(hermano, 0)
+                
+                repeticion_puesto = 0
+                if ultimo_puesto_deseado and ultimo_puesto_av.get(hermano) == ultimo_puesto_deseado:
+                    repeticion_puesto = 1
+                    
+                repeticion_dia = 0
+                if es_mic and ultimo_tipo_dia_mic.get(hermano) == tipo_dia_actual:
+                    repeticion_dia = 1
+                    
+                return (penalizacion_descanso, conteo, repeticion_puesto, repeticion_dia)
+
             # 1. ASIGNAR AUDIO
             candidatos_audio = [h for h in hermanos_av if h not in excluidos and h != "Roger Loaiza"]
             if candidatos_audio:
-                candidatos_audio.sort(key=lambda h: (
-                    conteo_acumulado.get(h, 0),
-                    1 if ultimo_puesto_av.get(h) == 'Audio' else 0
-                ))
+                candidatos_audio.sort(key=lambda h: score_candidato(h, ultimo_puesto_deseado='Audio'))
                 h_audio = candidatos_audio[0]
             else:
                 h_audio = ""
@@ -265,13 +287,10 @@ for idx, reun in enumerate(st.session_state.reuniones):
             if h_audio:
                 excluidos.add(h_audio)
 
-            # 2. ASIGNAR VIDEO (Excluye hermanos_solo_audio: José Alberto González y David Herrera)
+            # 2. ASIGNAR VIDEO
             candidatos_video = [h for h in hermanos_av if h not in excluidos and h not in hermanos_solo_audio and h != "Roger Loaiza"]
             if candidatos_video:
-                candidatos_video.sort(key=lambda h: (
-                    conteo_acumulado.get(h, 0),
-                    1 if ultimo_puesto_av.get(h) == 'Video' else 0
-                ))
+                candidatos_video.sort(key=lambda h: score_candidato(h, ultimo_puesto_deseado='Video'))
                 h_video = candidatos_video[0]
             else:
                 h_video = ""
@@ -283,31 +302,38 @@ for idx, reun in enumerate(st.session_state.reuniones):
             if h_audio:
                 conteo_acumulado[h_audio] = conteo_acumulado.get(h_audio, 0) + 1
                 ultimo_puesto_av[h_audio] = 'Audio'
+                ultima_fecha_asignado[h_audio] = dt_obj
             if h_video:
                 conteo_acumulado[h_video] = conteo_acumulado.get(h_video, 0) + 1
                 ultimo_puesto_av[h_video] = 'Video'
+                ultima_fecha_asignado[h_video] = dt_obj
 
             # 3. ASIGNAR MICRÓFONO
             candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Roger Loaiza" and h != "Carlos Enrique Pereira"]
+            
+            # REGLA CARLOS BLANCO Y WALTER SÁNCHEZ: Solo Micrófonos en DOMINGOS
+            if not es_domingo:
+                candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
+
             if not candidatos_mic:
                 candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Roger Loaiza" and h != "Carlos Enrique Pereira"]
+                if not es_domingo:
+                    candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
 
-            # Regla Iván Zamora: máx 2 veces al mes
+            # Regla Iván Chavarría: máx 2 veces al mes
             if conteo_ivan_mes.get(clave_mes, 0) >= 2:
-                candidatos_mic = [h for h in candidatos_mic if "Iván Zamora" not in h]
+                candidatos_mic = [h for h in candidatos_mic if "Iván Chavarría" not in h and "Iván Zamora" not in h]
 
-            candidatos_mic.sort(key=lambda h: (
-                conteo_acumulado.get(h, 0),
-                1 if ultimo_tipo_dia_mic.get(h) == tipo_dia_actual else 0
-            ))
+            candidatos_mic.sort(key=lambda h: score_candidato(h, es_mic=True))
 
             h_mic = candidatos_mic[0] if candidatos_mic else ""
             if h_mic:
                 excluidos.add(h_mic)
                 conteo_acumulado[h_mic] = conteo_acumulado.get(h_mic, 0) + 1
                 ultimo_tipo_dia_mic[h_mic] = tipo_dia_actual
+                ultima_fecha_asignado[h_mic] = dt_obj
                 
-                if "Iván Zamora" in h_mic:
+                if "Iván Chavarría" in h_mic:
                     conteo_ivan_mes[clave_mes] = conteo_ivan_mes.get(clave_mes, 0) + 1
 
             # 4. ASIGNAR ACOMODADOR
@@ -322,11 +348,12 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 if es_domingo or hermanos_salieron:
                     candidatos_aco = [h for h in candidatos_aco if "Roger Loaiza" not in h]
 
-            candidatos_aco.sort(key=lambda h: conteo_acumulado.get(h, 0))
+            candidatos_aco.sort(key=lambda h: score_candidato(h))
             h_aco = candidatos_aco[0] if candidatos_aco else ""
             if h_aco:
                 excluidos.add(h_aco)
                 conteo_acumulado[h_aco] = conteo_acumulado.get(h_aco, 0) + 1
+                ultima_fecha_asignado[h_aco] = dt_obj
 
             st.caption(f"🤖 **Asignación:** Audio: *{h_audio}* | Video: *{h_video}* | Mic: *{h_mic}* | Acomodador: *{h_aco}*")
 
@@ -431,7 +458,7 @@ html_code = f"""
 
   <div id="contenedor-programa">
     <div class="header-banner">
-      <h1>Programa de Audio, Video y Salas</h1>
+      <h1>PROGRAMA DE AUDIO, VIDEO, MICRÓFONO Y ACOMODADOR</h1>
       <p>Congregación {congregacion} | {periodo_str}</p>
     </div>
     <div class="tabla-contenedor">
@@ -459,7 +486,7 @@ html_code = f"""
       const elemento = document.getElementById('contenedor-programa');
       html2canvas(elemento, {{ scale: 2, useCORS: true, backgroundColor: '#ffffff' }}).then(canvas => {{
         const enlace = document.createElement('a');
-        enlace.download = 'Programa_Audio_Video_Salas.png';
+        enlace.download = 'Programa_Audio_Video_Microfono_Acomodador.png';
         enlace.href = canvas.toDataURL('image/png');
         enlace.click();
       }});
@@ -469,7 +496,7 @@ html_code = f"""
       const elemento = document.getElementById('contenedor-programa');
       const opciones = {{
         margin: 0.3,
-        filename: 'Programa_Audio_Video_Salas.pdf',
+        filename: 'Programa_Audio_Video_Microfono_Acomodador.pdf',
         image: {{ type: 'jpeg', quality: 0.98 }},
         html2canvas: {{ scale: 2, useCORS: true }},
         jsPDF: {{ unit: 'in', format: 'letter', orientation: 'landscape' }}
@@ -481,7 +508,7 @@ html_code = f"""
       const tabla = document.querySelector('#contenedor-programa table');
       if (!tabla) return;
       const libro = XLSX.utils.table_to_book(tabla, {{ sheet: "Programa" }});
-      XLSX.writeFile(libro, 'Programa_Audio_Video_Salas.xlsx');
+      XLSX.writeFile(libro, 'Programa_Audio_Video_Microfono_Acomodador.xlsx');
     }}
   </script>
 </body>
