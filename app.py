@@ -122,7 +122,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("👥 Hermanos Autorizados por Puesto")
 
-    # 1. Audio y Video (Incluye a Geremy)
+    # 1. Audio y Video
     av_defecto = ["José Pereira", "José Alberto González", "Carlos Josué Pereira", "Javier García", "Sebastián Montero", "David Herrera", "Geremy Fernández"]
     av_txt = st.text_area("🎧🖥️ Autorizados para Audio y Video:", value="\n".join(av_defecto), height=130)
     hermanos_av = [h.strip() for h in av_txt.split("\n") if h.strip()]
@@ -151,11 +151,12 @@ with st.sidebar:
     aco_txt = st.text_area("🚪 Autorizados para Acomodadores:", value="\n".join(aco_defecto), height=160)
     hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
 
-    # Lista unificada
-    todos_hermanos = sorted(list(set(hermanos_av + hermanos_aco + ["Iván Zamora", "Carlos Blanco", "Kenneth Solís"])))
+    # Lista unificada de todos los hermanos (Incluye a Dashler Sánchez)
+    todos_hermanos = sorted(list(set(hermanos_av + hermanos_aco + ["Iván Zamora", "Carlos Blanco", "Kenneth Solís", "Dashler Sánchez"])))
 
-    # 3. Micrófonos
-    mic_txt = st.text_area("🎤 Autorizados para Micrófonos:", value="\n".join(todos_hermanos), height=180)
+    # 3. Micrófonos (Se excluye a Carlos Enrique Pereira y se incluye a Dashler Sánchez)
+    mic_defecto = [h for h in todos_hermanos if h != "Carlos Enrique Pereira"]
+    mic_txt = st.text_area("🎤 Autorizados para Micrófonos:", value="\n".join(mic_defecto), height=180)
     hermanos_mic = [h.strip() for h in mic_txt.split("\n") if h.strip()]
 
 # --- 2. INICIALIZACIÓN DE SESIÓN ---
@@ -167,7 +168,7 @@ if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
     )
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("👉 **Notas activas:** Roger Loaiza solo acomodador entre semana (hasta 23/08/2026). Geremy Fernández rota en todos los puestos (hasta 23/08/2026). Iván Zamora máx. 2 veces/mes en micros.")
+st.info("👉 **Notas activas:** Carlos Enrique Pereira fuera de micrófonos. Dashler Sánchez agregado a micrófonos. Roger Loaiza (solo acomodador entre semana hasta 23/08/2026). Geremy Fernández (hasta 23/08/2026). Iván Zamora (máx. 2 veces/mes en micros).")
 
 datos_programa_final = []
 
@@ -177,7 +178,7 @@ ultimo_puesto_av = {h: None for h in hermanos_av}
 ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
 conteo_ivan_mes = {}
 
-# --- 3. ALGORITMO DE ASIGNACIÓN CON REGLAS DE CORTE DE FECHA ---
+# --- 3. ALGORITMO DE ASIGNACIÓN ---
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
@@ -227,10 +228,9 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 dt_obj = datetime.date(anio, 1, 1)
                 clave_mes = "actual"
 
-            # REGLAS DE CORTE Y RESTRICCIONES PERSONALIZADAS
+            # REGLAS DE CORTE DE FECHA (Roger y Geremy)
             hermanos_salieron = dt_obj > FECHA_CORTE_SALIDA
 
-            # Excluir a Roger y Geremy por completo si ya pasó el 23/08/2026
             if hermanos_salieron:
                 excluidos.add("Roger Loaiza")
                 excluidos.add("Geremy Fernández")
@@ -271,10 +271,10 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 conteo_acumulado[h_video] = conteo_acumulado.get(h_video, 0) + 1
                 ultimo_puesto_av[h_video] = 'Video'
 
-            # 3. ASIGNAR MICRÓFONO
-            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Roger Loaiza"]
+            # 3. ASIGNAR MICRÓFONO (Excluye Carlos Enrique Pereira, incluye a Dashler Sánchez)
+            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Roger Loaiza" and h != "Carlos Enrique Pereira"]
             if not candidatos_mic:
-                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Roger Loaiza"]
+                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Roger Loaiza" and h != "Carlos Enrique Pereira"]
 
             # Regla Iván Zamora: máx 2 veces al mes
             if conteo_ivan_mes.get(clave_mes, 0) >= 2:
