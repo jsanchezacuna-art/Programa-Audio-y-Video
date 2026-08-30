@@ -138,7 +138,14 @@ with st.sidebar:
         "Dáshler Sánchez",
         "Rodney Alfaro",
         "Kenneth Solís",
-        "Josué López"
+        "Josué López",
+        "Adiel Arias",
+        "Fran Vega",
+        "Meysson Pérez",
+        "Yoiser Vargas",
+        "Jossy Quesada",
+        "Henry Altamirano",
+        "Evans Arguedas"
     ]
     av_txt = st.text_area("🎧🖥️ Autorizados para Audio y Video:", value="\n".join(av_defecto), height=200)
     hermanos_av = [h.strip() for h in av_txt.split("\n") if h.strip()]
@@ -165,7 +172,14 @@ with st.sidebar:
         "José Pereira",
         "Carlos Josué Pereira",
         "José Alberto González",
-        "Roger Loaiza"
+        "Roger Loaiza",
+        "Adiel Arias",
+        "Fran Vega",
+        "Meysson Pérez",
+        "Yoiser Vargas",
+        "Jossy Quesada",
+        "Henry Altamirano",
+        "Evans Arguedas"
     ]
     aco_txt = st.text_area("🚪 Autorizados para Acomodadores:", value="\n".join(aco_defecto), height=160)
     hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
