@@ -19,7 +19,6 @@ MESES_LISTA = [
 ]
 MESES_DICT = {nombre: i + 1 for i, nombre in enumerate(MESES_LISTA)}
 DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-FECHA_CORTE_SALIDA = datetime.date(2026, 8, 23)
 DIAS_DESCANSO_MINIMO = 10  # Días mínimos entre asignaciones para el mismo hermano
 
 def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles"):
@@ -63,7 +62,7 @@ with st.sidebar:
     
     col_m1, col_m2 = st.columns(2)
     with col_m1:
-        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=7) # Agosto
+        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=8) # Septiembre
     
     meses_seleccionados = [mes_1]
     if cant_meses == "2 Meses":
@@ -90,6 +89,7 @@ with st.sidebar:
             meses_seleccionados=meses_seleccionados,
             dia_entre_semana=dia_habitual_entre_semana
         )
+        st.session_state.periodo_cargado = (anio, tuple(meses_seleccionados), dia_habitual_entre_semana)
         st.success("¡Fechas cargadas correctamente!")
         st.rerun()
 
@@ -125,7 +125,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("👥 Hermanos Autorizados por Puesto")
 
-    # 1. Audio y Video
+    # 1. Audio y Video (Se remueve Geremy Fernández)
     av_defecto = [
         "José Pereira",
         "José Alberto González",
@@ -133,7 +133,6 @@ with st.sidebar:
         "Javier García",
         "Sebastián Montero",
         "David Herrera",
-        "Geremy Fernández",
         "Julio Sánchez",
         "Dáshler Sánchez",
         "Rodney Alfaro",
@@ -158,7 +157,7 @@ with st.sidebar:
     solo_audio_txt = st.text_area("⚠️ Hermanos autorizados SOLO para Audio (No Video):", value="\n".join(solo_audio_defecto), height=80)
     hermanos_solo_audio = [h.strip() for h in solo_audio_txt.split("\n") if h.strip()]
 
-    # 2. Acomodadores
+    # 2. Acomodadores (Se remueven Geremy Fernández y Roger Loaiza)
     aco_defecto = [
         "Rafael Segura",
         "Rodney Alfaro",
@@ -167,12 +166,10 @@ with st.sidebar:
         "Julio Sánchez",
         "Carlos Enrique Pereira",
         "Elixander Alvarado",
-        "Geremy Fernández",
         "David Herrera",
         "José Pereira",
         "Carlos Josué Pereira",
         "José Alberto González",
-        "Roger Loaiza",
         "Adiel Arias",
         "Fran Vega",
         "Meysson Pérez",
@@ -192,16 +189,19 @@ with st.sidebar:
     mic_txt = st.text_area("🎤 Autorizados para Micrófonos:", value="\n".join(mic_defecto), height=180)
     hermanos_mic = [h.strip() for h in mic_txt.split("\n") if h.strip()]
 
-# --- 2. INICIALIZACIÓN DE SESIÓN ---
-if "reuniones" not in st.session_state or len(st.session_state.reuniones) == 0:
+# --- 2. INICIALIZACIÓN Y ACTUALIZACIÓN DE SESIÓN ---
+config_actual = (anio, tuple(meses_seleccionados), dia_habitual_entre_semana)
+
+if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado") != config_actual:
     st.session_state.reuniones = generar_fechas_meses(
         anio=anio,
         meses_seleccionados=meses_seleccionados,
         dia_entre_semana=dia_habitual_entre_semana
     )
+    st.session_state.periodo_cargado = config_actual
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("👉 **Regla nueva activa:** Carlos Blanco y Walter Sánchez solo asignados a Micrófonos los días domingo.")
+st.info("👉 **Regla activa:** Carlos Blanco y Walter Sánchez solo asignados a Micrófonos los días domingo.")
 
 datos_programa_final = []
 
@@ -262,22 +262,13 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 dt_obj = datetime.date(anio, 1, 1)
                 clave_mes = "actual"
 
-            # REGLAS DE CORTE DE FECHA (Roger y Geremy)
-            hermanos_salieron = dt_obj > FECHA_CORTE_SALIDA
-
-            if hermanos_salieron:
-                excluidos.add("Roger Loaiza")
-                excluidos.add("Geremy Fernández")
-
             # Función de ordenamiento considerando descanso en días
             def score_candidato(hermano, ultimo_puesto_deseado=None, es_mic=False):
                 dias_desde_ultimo = 999
                 if ultima_fecha_asignado.get(hermano) is not None:
                     dias_desde_ultimo = (dt_obj - ultima_fecha_asignado[hermano]).days
                 
-                # Penalización severa si tiene menos de DIAS_DESCANSO_MINIMO días de haber servido
                 penalizacion_descanso = 1000 if dias_desde_ultimo < DIAS_DESCANSO_MINIMO else 0
-                
                 conteo = conteo_acumulado.get(hermano, 0)
                 
                 repeticion_puesto = 0
@@ -291,7 +282,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 return (penalizacion_descanso, conteo, repeticion_puesto, repeticion_dia)
 
             # 1. ASIGNAR AUDIO
-            candidatos_audio = [h for h in hermanos_av if h not in excluidos and h != "Roger Loaiza"]
+            candidatos_audio = [h for h in hermanos_av if h not in excluidos]
             if candidatos_audio:
                 candidatos_audio.sort(key=lambda h: score_candidato(h, ultimo_puesto_deseado='Audio'))
                 h_audio = candidatos_audio[0]
@@ -302,7 +293,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 excluidos.add(h_audio)
 
             # 2. ASIGNAR VIDEO
-            candidatos_video = [h for h in hermanos_av if h not in excluidos and h not in hermanos_solo_audio and h != "Roger Loaiza"]
+            candidatos_video = [h for h in hermanos_av if h not in excluidos and h not in hermanos_solo_audio]
             if candidatos_video:
                 candidatos_video.sort(key=lambda h: score_candidato(h, ultimo_puesto_deseado='Video'))
                 h_video = candidatos_video[0]
@@ -323,14 +314,14 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 ultima_fecha_asignado[h_video] = dt_obj
 
             # 3. ASIGNAR MICRÓFONO
-            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Roger Loaiza" and h != "Carlos Enrique Pereira"]
+            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Carlos Enrique Pereira"]
             
             # REGLA CARLOS BLANCO Y WALTER SÁNCHEZ: Solo Micrófonos en DOMINGOS
             if not es_domingo:
                 candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
 
             if not candidatos_mic:
-                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Roger Loaiza" and h != "Carlos Enrique Pereira"]
+                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Carlos Enrique Pereira"]
                 if not es_domingo:
                     candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
 
@@ -352,15 +343,8 @@ for idx, reun in enumerate(st.session_state.reuniones):
 
             # 4. ASIGNAR ACOMODADOR
             candidatos_aco = [h for h in hermanos_aco if h not in excluidos]
-            
-            # REGLA ROGER LOAIZA: Solo entre semana y antes del 23/08/2026
-            if es_domingo or hermanos_salieron:
-                candidatos_aco = [h for h in candidatos_aco if "Roger Loaiza" not in h]
-
             if not candidatos_aco:
                 candidatos_aco = [h for h in todos_hermanos if h not in excluidos]
-                if es_domingo or hermanos_salieron:
-                    candidatos_aco = [h for h in candidatos_aco if "Roger Loaiza" not in h]
 
             candidatos_aco.sort(key=lambda h: score_candidato(h))
             h_aco = candidatos_aco[0] if candidatos_aco else ""
