@@ -3,6 +3,7 @@ import streamlit.components.v1 as components
 import datetime
 import calendar
 import pandas as pd
+import io
 
 # Configuración de la página
 st.set_page_config(
@@ -93,7 +94,7 @@ with st.sidebar:
         st.success("¡Fechas cargadas correctamente!")
         st.rerun()
 
-    # --- CARGA DE HISTORIAL ANTERIOR ---
+    # --- CARGA DE HISTORIAL ANTERIOR SIN DEPENDENCIAS EXTERNAS ---
     st.markdown("---")
     st.subheader("📂 Historial del Mes Anterior")
     archivo_historial = st.file_uploader(
@@ -104,16 +105,30 @@ with st.sidebar:
     conteo_historial = {}
     if archivo_historial is not None:
         try:
-            if archivo_historial.name.endswith(".csv"):
-                df_hist = pd.read_csv(archivo_historial)
-            else:
-                try:
-                    df_hist = pd.read_excel(archivo_historial, engine="openpyxl")
-                except Exception:
-                    archivo_historial.seek(0)
-                    df_hist = pd.read_excel(archivo_historial)
+            contenido = archivo_historial.read()
+            df_hist = None
 
-            # Detectar fila de encabezados reales si el Excel trae banner de título arriba
+            # 1. Intentar como CSV / HTML generado por Excel
+            try:
+                dfs = pd.read_html(io.BytesIO(contenido))
+                if dfs:
+                    df_hist = dfs[0]
+            except Exception:
+                pass
+
+            if df_hist is None:
+                try:
+                    df_hist = pd.read_csv(io.BytesIO(contenido))
+                except Exception:
+                    pass
+
+            if df_hist is None:
+                try:
+                    df_hist = pd.read_excel(io.BytesIO(contenido))
+                except Exception as ex_excel:
+                    raise RuntimeError("Para leer archivos .xlsx nativos debes agregar 'openpyxl' en tu archivo requirements.txt del servidor.")
+
+            # Detectar fila de encabezados reales
             for idx_row, row in df_hist.iterrows():
                 row_str = row.astype(str).tolist()
                 if any("Audio" in cell for cell in row_str) and any("Video" in cell for cell in row_str):
