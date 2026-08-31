@@ -148,9 +148,9 @@ with st.sidebar:
 
     # --- CLASIFICACIÓN DE HERMANOS ---
     st.markdown("---")
-    st.subheader("🔑 Hermanos Locales con Llave y Nuevos Integrantes")
+    st.subheader("🔑 Clasificación de Cabina")
 
-    # 1. Hermanos Locales con Llave y Conocimiento de Equipos
+    # 1. Hermanos Locales con Llave y Experiencia (Supervisión / Video)
     locales_defecto = [
         "José Pereira",
         "Carlos Josué Pereira",
@@ -163,10 +163,10 @@ with st.sidebar:
         "Rodney Alfaro",
         "Kenneth Solís"
     ]
-    locales_txt = st.text_area("🔑 Hermanos LOCALES (Con Llave / Experiencia):", value="\n".join(locales_defecto), height=160)
+    locales_txt = st.text_area("🔑 Hermanos LOCALES (Experimentos / Video y Llave):", value="\n".join(locales_defecto), height=160)
     hermanos_locales = [h.strip() for h in locales_txt.split("\n") if h.strip()]
 
-    # 2. Nuevos integrantes (Por 4 meses: Ancianos y Ministeriales)
+    # 2. Los 7 Nuevos integrantes a entrenar en Audio
     nuevos_defecto = [
         "Adiel Arias",
         "Fran Vega",
@@ -174,19 +174,13 @@ with st.sidebar:
         "Yoiser Vargas",
         "Jossy Quesada",
         "Henry Altamirano",
-        "Evans Arguedas",
-        "Josué López"
+        "Evans Arguedas"
     ]
-    nuevos_txt = st.text_area("📋 NUEVOS Integrantes (Por 4 meses):", value="\n".join(nuevos_defecto), height=160)
+    nuevos_txt = st.text_area("🌱 NUEVOS Integrantes (Audio / Entrenamiento):", value="\n".join(nuevos_defecto), height=160)
     hermanos_nuevos = [h.strip() for h in nuevos_txt.split("\n") if h.strip()]
 
     # Integrantes para Audio / Video
     hermanos_av = list(set(hermanos_locales + hermanos_nuevos))
-
-    # Excepción SOLO AUDIO
-    solo_audio_defecto = ["José Alberto González", "David Herrera"]
-    solo_audio_txt = st.text_area("⚠️ Autorizados SOLO para Audio (No Video):", value="\n".join(solo_audio_defecto), height=70)
-    hermanos_solo_audio = [h.strip() for h in solo_audio_txt.split("\n") if h.strip()]
 
     # Acomodadores
     aco_defecto = sorted(list(set(hermanos_av + ["Rafael Segura", "Walter Sánchez", "Carlos Enrique Pereira", "Elixander Alvarado"])))
@@ -212,7 +206,7 @@ if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado"
     st.session_state.periodo_cargado = config_actual
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("🔑 **Regla de Cabina Activa:** Cada nuevo hermano asignado a Audio/Video estará acompañado obligatoriamente por un hermano local con llave del salón.")
+st.info("🎓 **Regla de Capacitación Activa:** El puesto de **Audio** lo realiza un integrante nuevo y el puesto de **Video** un hermano local experimentado con llave del salón.")
 
 datos_programa_final = []
 
@@ -222,7 +216,7 @@ ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
 ultima_fecha_asignado = {h: None for h in todos_hermanos}
 conteo_ivan_mes = {}
 
-# --- 3. ALGORITMO DE PAREJAS (LOCAL + NUEVO) ---
+# --- 3. ALGORITMO DE ASIGNACIÓN (AUDIO: NUEVO | VIDEO: LOCAL EXPERTO) ---
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
@@ -271,7 +265,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 dt_obj = datetime.date(anio, 1, 1)
                 clave_mes = "actual"
 
-            def score_candidato(hermano, ultimo_puesto_deseado=None, es_mic=False):
+            def score_candidato(hermano, es_mic=False):
                 dias_desde_ultimo = 999
                 if ultima_fecha_asignado.get(hermano) is not None:
                     dias_desde_ultimo = (dt_obj - ultima_fecha_asignado[hermano]).days
@@ -279,52 +273,34 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 penalizacion_descanso = 5000 if dias_desde_ultimo < DIAS_DESCANSO_MINIMO else 0
                 conteo = conteo_acumulado.get(hermano, 0)
                 
-                repeticion_puesto = 0
-                if ultimo_puesto_deseado and ultimo_puesto_av.get(hermano) == ultimo_puesto_deseado:
-                    repeticion_puesto = 10
-                    
                 repeticion_dia = 0
                 if es_mic and ultimo_tipo_dia_mic.get(hermano) == tipo_dia_actual:
                     repeticion_dia = 5
                     
-                return (penalizacion_descanso, conteo, repeticion_puesto, repeticion_dia)
+                return (penalizacion_descanso, conteo, repeticion_dia)
 
-            # 1. ASIGNACIÓN CABINA (AUDIO Y VIDEO)
-            candidatos_av = [h for h in hermanos_av if h not in excluidos]
-            h_audio = ""
-            h_video = ""
-
-            if candidatos_av:
-                candidatos_av.sort(key=lambda h: score_candidato(h))
+            # 1. ASIGNAR AUDIO (Nuevos integrantes primero)
+            cand_audio = [h for h in hermanos_nuevos if h not in excluidos]
+            if not cand_audio:
+                # Fallback en caso de que todos los nuevos estén ocupados esa fecha
+                cand_audio = [h for h in hermanos_av if h not in excluidos]
                 
-                # Asignar primer puesto (Audio)
-                h_audio = candidatos_av[0]
+            cand_audio.sort(key=lambda h: score_candidato(h))
+            h_audio = cand_audio[0] if cand_audio else ""
+            if h_audio:
                 excluidos.add(h_audio)
 
-                es_audio_nuevo = h_audio in hermanos_nuevos
-
-                # Asignar segundo puesto (Video)
-                cand_video = [h for h in hermanos_av if h not in excluidos and h not in hermanos_solo_audio]
+            # 2. ASIGNAR VIDEO (Hermano local experimentado con llave)
+            cand_video = [h for h in hermanos_locales if h not in excluidos]
+            if not cand_video:
+                cand_video = [h for h in hermanos_av if h not in excluidos]
                 
-                if cand_video:
-                    if es_audio_nuevo:
-                        # Si el de Audio es nuevo por 4 meses, obligatoriamente el de Video es LOCAL con llave
-                        opciones_video = [h for h in cand_video if h in hermanos_locales]
-                        if not opciones_video:
-                            opciones_video = cand_video  # Fallback si estuvieran ocupados
-                    else:
-                        # Si el de Audio es local, priorizamos asignarle un hermano nuevo
-                        opciones_video_nuevos = [h for h in cand_video if h in hermanos_nuevos]
-                        if opciones_video_nuevos:
-                            opciones_video = opciones_video_nuevos
-                        else:
-                            opciones_video = cand_video
-                    
-                    opciones_video.sort(key=lambda h: score_candidato(h, ultimo_puesto_deseado='Video'))
-                    h_video = opciones_video[0]
-                    excluidos.add(h_video)
+            cand_video.sort(key=lambda h: score_candidato(h))
+            h_video = cand_video[0] if cand_video else ""
+            if h_video:
+                excluidos.add(h_video)
 
-            # Actualizar historial A/V
+            # Actualizar conteos de A/V
             if h_audio:
                 conteo_acumulado[h_audio] = conteo_acumulado.get(h_audio, 0) + 1
                 ultimo_puesto_av[h_audio] = 'Audio'
@@ -334,7 +310,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 ultimo_puesto_av[h_video] = 'Video'
                 ultima_fecha_asignado[h_video] = dt_obj
 
-            # 2. ASIGNAR MICRÓFONO
+            # 3. ASIGNAR MICRÓFONO
             candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Carlos Enrique Pereira"]
             
             if not es_domingo:
@@ -360,7 +336,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 if "Iván Chavarría" in h_mic:
                     conteo_ivan_mes[clave_mes] = conteo_ivan_mes.get(clave_mes, 0) + 1
 
-            # 3. ASIGNAR ACOMODADOR
+            # 4. ASIGNAR ACOMODADOR
             candidatos_aco = [h for h in hermanos_aco if h not in excluidos]
             if not candidatos_aco:
                 candidatos_aco = [h for h in todos_hermanos if h not in excluidos]
@@ -372,7 +348,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 conteo_acumulado[h_aco] = conteo_acumulado.get(h_aco, 0) + 1
                 ultima_fecha_asignado[h_aco] = dt_obj
 
-            st.caption(f"🤖 **Asignación:** Audio: *{h_audio}* | Video: *{h_video}* | Mic: *{h_mic}* | Acomodador: *{h_aco}*")
+            st.caption(f"🤖 **Asignación:** Audio: *{h_audio}* (Nuevo) | Video: *{h_video}* (Local/Llave) | Mic: *{h_mic}* | Acomodador: *{h_aco}*")
 
             datos_programa_final.append({
                 "Fecha": reun['fecha'],
