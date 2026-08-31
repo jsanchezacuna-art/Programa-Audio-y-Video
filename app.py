@@ -108,7 +108,6 @@ with st.sidebar:
             contenido = archivo_historial.read()
             df_hist = None
 
-            # Intentar lectura CSV / HTML
             try:
                 dfs = pd.read_html(io.BytesIO(contenido))
                 if dfs:
@@ -126,7 +125,7 @@ with st.sidebar:
                 try:
                     df_hist = pd.read_excel(io.BytesIO(contenido))
                 except Exception:
-                    raise RuntimeError("Para leer archivos .xlsx nativos debes agregar 'openpyxl' en tu archivo requirements.txt del servidor.")
+                    raise RuntimeError("Si usas archivos .xlsx nativos, agrega 'openpyxl' en tu archivo requirements.txt.")
 
             for idx_row, row in df_hist.iterrows():
                 row_str = row.astype(str).tolist()
@@ -147,75 +146,50 @@ with st.sidebar:
         except Exception as e:
             st.error(f"Error al leer el archivo: {e}")
 
-    # --- LISTAS DE HERMANOS ---
+    # --- CLASIFICACIÓN DE HERMANOS ---
     st.markdown("---")
-    st.subheader("👥 Hermanos Autorizados por Puesto")
+    st.subheader("🔑 Hermanos Locales con Llave y Nuevos Integrantes")
 
-    # 1. Lista de Experiencia en Audio/Video
-    av_defecto = [
+    # 1. Hermanos Locales con Llave y Conocimiento de Equipos
+    locales_defecto = [
         "José Pereira",
-        "José Alberto González",
         "Carlos Josué Pereira",
+        "Julio Sánchez",
         "Javier García",
+        "José Alberto González",
         "Sebastián Montero",
         "David Herrera",
-        "Julio Sánchez",
         "Dáshler Sánchez",
         "Rodney Alfaro",
-        "Kenneth Solís",
-        "Josué López",
+        "Kenneth Solís"
+    ]
+    locales_txt = st.text_area("🔑 Hermanos LOCALES (Con Llave / Experiencia):", value="\n".join(locales_defecto), height=160)
+    hermanos_locales = [h.strip() for h in locales_txt.split("\n") if h.strip()]
+
+    # 2. Nuevos integrantes (Por 4 meses: Ancianos y Ministeriales)
+    nuevos_defecto = [
         "Adiel Arias",
         "Fran Vega",
         "Meysson Pérez",
         "Yoiser Vargas",
         "Jossy Quesada",
         "Henry Altamirano",
-        "Evans Arguedas"
-    ]
-    av_txt = st.text_area("🎧🖥️ Experimentos / Titulares (Audio y Video):", value="\n".join(av_defecto), height=180)
-    hermanos_av_exp = [h.strip() for h in av_txt.split("\n") if h.strip()]
-
-    # 2. Lista de Nuevos / En Entrenamiento (Para ir acoplándolos con un experimentado)
-    nuevos_av_defecto = [
-        "Jossy Quesada",
         "Evans Arguedas",
-        "Henry Altamirano"
+        "Josué López"
     ]
-    nuevos_av_txt = st.text_area("🌱 Nuevos / En entrenamiento (Audio/Video):", value="\n".join(nuevos_av_defecto), height=100)
-    hermanos_av_nuevos = [h.strip() for h in nuevos_av_txt.split("\n") if h.strip()]
+    nuevos_txt = st.text_area("📋 NUEVOS Integrantes (Por 4 meses):", value="\n".join(nuevos_defecto), height=160)
+    hermanos_nuevos = [h.strip() for h in nuevos_txt.split("\n") if h.strip()]
 
-    # Unificación para lista general de AV
-    hermanos_av = list(set(hermanos_av_exp + hermanos_av_nuevos))
+    # Integrantes para Audio / Video
+    hermanos_av = list(set(hermanos_locales + hermanos_nuevos))
 
-    # EXCEPCIÓN: SOLO AUDIO
-    solo_audio_defecto = [
-        "José Alberto González",
-        "David Herrera"
-    ]
-    solo_audio_txt = st.text_area("⚠️ Hermanos autorizados SOLO para Audio (No Video):", value="\n".join(solo_audio_defecto), height=80)
+    # Excepción SOLO AUDIO
+    solo_audio_defecto = ["José Alberto González", "David Herrera"]
+    solo_audio_txt = st.text_area("⚠️ Autorizados SOLO para Audio (No Video):", value="\n".join(solo_audio_defecto), height=70)
     hermanos_solo_audio = [h.strip() for h in solo_audio_txt.split("\n") if h.strip()]
 
     # Acomodadores
-    aco_defecto = [
-        "Rafael Segura",
-        "Rodney Alfaro",
-        "Josué López",
-        "Walter Sánchez",
-        "Julio Sánchez",
-        "Carlos Enrique Pereira",
-        "Elixander Alvarado",
-        "David Herrera",
-        "José Pereira",
-        "Carlos Josué Pereira",
-        "José Alberto González",
-        "Adiel Arias",
-        "Fran Vega",
-        "Meysson Pérez",
-        "Yoiser Vargas",
-        "Jossy Quesada",
-        "Henry Altamirano",
-        "Evans Arguedas"
-    ]
+    aco_defecto = sorted(list(set(hermanos_av + ["Rafael Segura", "Walter Sánchez", "Carlos Enrique Pereira", "Elixander Alvarado"])))
     aco_txt = st.text_area("🚪 Autorizados para Acomodadores:", value="\n".join(aco_defecto), height=140)
     hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
 
@@ -223,7 +197,7 @@ with st.sidebar:
 
     # Micrófonos
     mic_defecto = [h for h in todos_hermanos if h != "Carlos Enrique Pereira"]
-    mic_txt = st.text_area("🎤 Autorizados para Micrófonos:", value="\n".join(mic_defecto), height=160)
+    mic_txt = st.text_area("🎤 Autorizados para Micrófonos:", value="\n".join(mic_defecto), height=140)
     hermanos_mic = [h.strip() for h in mic_txt.split("\n") if h.strip()]
 
 # --- 2. INICIALIZACIÓN Y ACTUALIZACIÓN DE SESIÓN ---
@@ -238,18 +212,17 @@ if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado"
     st.session_state.periodo_cargado = config_actual
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("💡 **Parejas de Entrenamiento:** El sistema emparejará automáticamente a un hermano en entrenamiento con uno experimentado en Audio y Video.")
+st.info("🔑 **Regla de Cabina Activa:** Cada nuevo hermano asignado a Audio/Video estará acompañado obligatoriamente por un hermano local con llave del salón.")
 
 datos_programa_final = []
 
-# Contadores de control
 conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
 ultimo_puesto_av = {h: None for h in hermanos_av}
 ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
 ultima_fecha_asignado = {h: None for h in todos_hermanos}
 conteo_ivan_mes = {}
 
-# --- 3. ALGORITMO DE ASIGNACIÓN CON ENTRENAMIENTO ---
+# --- 3. ALGORITMO DE PAREJAS (LOCAL + NUEVO) ---
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
@@ -303,7 +276,6 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 if ultima_fecha_asignado.get(hermano) is not None:
                     dias_desde_ultimo = (dt_obj - ultima_fecha_asignado[hermano]).days
                 
-                # Penalización severa para forzar rotación sin repetir
                 penalizacion_descanso = 5000 if dias_desde_ultimo < DIAS_DESCANSO_MINIMO else 0
                 conteo = conteo_acumulado.get(hermano, 0)
                 
@@ -317,45 +289,42 @@ for idx, reun in enumerate(st.session_state.reuniones):
                     
                 return (penalizacion_descanso, conteo, repeticion_puesto, repeticion_dia)
 
-            # 1. SELECCIÓN PAREJA AUDIO Y VIDEO (ENTRENAMIENTO ACOPLADO)
-            candidatos_av_disponibles = [h for h in hermanos_av if h not in excluidos]
-            
+            # 1. ASIGNACIÓN CABINA (AUDIO Y VIDEO)
+            candidatos_av = [h for h in hermanos_av if h not in excluidos]
             h_audio = ""
             h_video = ""
 
-            if candidatos_av_disponibles:
-                # Ordenar candidatos generales
-                candidatos_av_disponibles.sort(key=lambda h: score_candidato(h))
+            if candidatos_av:
+                candidatos_av.sort(key=lambda h: score_candidato(h))
                 
-                # Seleccionar primero para Audio
-                h_audio = candidatos_av_disponibles[0]
+                # Asignar primer puesto (Audio)
+                h_audio = candidatos_av[0]
                 excluidos.add(h_audio)
 
-                # Determinar si el seleccionado de Audio es 'Nuevo' o 'Experimentado'
-                es_audio_nuevo = h_audio in hermanos_av_nuevos
+                es_audio_nuevo = h_audio in hermanos_nuevos
 
-                # Filtrar candidatos para Video
-                candidatos_video = [h for h in hermanos_av if h not in excluidos and h not in hermanos_solo_audio]
+                # Asignar segundo puesto (Video)
+                cand_video = [h for h in hermanos_av if h not in excluidos and h not in hermanos_solo_audio]
                 
-                if candidatos_video:
+                if cand_video:
                     if es_audio_nuevo:
-                        # Si Audio es nuevo, forzar que Video sea alguien experimentado
-                        exp_video = [h for h in candidatos_video if h not in hermanos_av_nuevos]
-                        if exp_video:
-                            exp_video.sort(key=lambda h: score_candidato(h, ultimo_puesto_deseado='Video'))
-                            h_video = exp_video[0]
-                        else:
-                            candidatos_video.sort(key=lambda h: score_candidato(h, ultimo_puesto_deseado='Video'))
-                            h_video = candidatos_video[0]
+                        # Si el de Audio es nuevo por 4 meses, obligatoriamente el de Video es LOCAL con llave
+                        opciones_video = [h for h in cand_video if h in hermanos_locales]
+                        if not opciones_video:
+                            opciones_video = cand_video  # Fallback si estuvieran ocupados
                     else:
-                        # Si Audio es experimentado, priorizar darle oportunidad a un nuevo si le toca rotación
-                        candidatos_video.sort(key=lambda h: score_candidato(h, ultimo_puesto_deseado='Video'))
-                        h_video = candidatos_video[0]
+                        # Si el de Audio es local, priorizamos asignarle un hermano nuevo
+                        opciones_video_nuevos = [h for h in cand_video if h in hermanos_nuevos]
+                        if opciones_video_nuevos:
+                            opciones_video = opciones_video_nuevos
+                        else:
+                            opciones_video = cand_video
                     
-                    if h_video:
-                        excluidos.add(h_video)
+                    opciones_video.sort(key=lambda h: score_candidato(h, ultimo_puesto_deseado='Video'))
+                    h_video = opciones_video[0]
+                    excluidos.add(h_video)
 
-            # Registrar estadísticas A/V
+            # Actualizar historial A/V
             if h_audio:
                 conteo_acumulado[h_audio] = conteo_acumulado.get(h_audio, 0) + 1
                 ultimo_puesto_av[h_audio] = 'Audio'
@@ -365,7 +334,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 ultimo_puesto_av[h_video] = 'Video'
                 ultima_fecha_asignado[h_video] = dt_obj
 
-            # 3. ASIGNAR MICRÓFONO
+            # 2. ASIGNAR MICRÓFONO
             candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Carlos Enrique Pereira"]
             
             if not es_domingo:
@@ -391,7 +360,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 if "Iván Chavarría" in h_mic:
                     conteo_ivan_mes[clave_mes] = conteo_ivan_mes.get(clave_mes, 0) + 1
 
-            # 4. ASIGNAR ACOMODADOR
+            # 3. ASIGNAR ACOMODADOR
             candidatos_aco = [h for h in hermanos_aco if h not in excluidos]
             if not candidatos_aco:
                 candidatos_aco = [h for h in todos_hermanos if h not in excluidos]
