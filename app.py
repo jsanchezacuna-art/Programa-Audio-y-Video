@@ -20,7 +20,8 @@ MESES_LISTA = [
 ]
 MESES_DICT = {nombre: i + 1 for i, nombre in enumerate(MESES_LISTA)}
 DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-DIAS_DESCANSO_MINIMO = 10  # Días mínimos entre asignaciones
+DIAS_DESCANSO_MINIMO = 10  # Días mínimos entre asignaciones para un mismo hermano
+MAX_ASIGNACIONES_MES = 2   # Máximo de asignaciones permitidas por mes por hermano
 
 def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles"):
     dias_map = {"Lunes": 0, "Martes": 1, "Miércoles": 2, "Jueves": 3, "Viernes": 4, "Sábado": 5, "Domingo": 6}
@@ -94,31 +95,17 @@ with st.sidebar:
         st.success("¡Fechas cargadas correctamente!")
         st.rerun()
 
-    # --- HISTORIAL PRECARGADO Y SUBIDA DE ARCHIVOS ---
+    # --- HISTORIAL PRECARGADO DE AGOSTO ---
     st.markdown("---")
-    st.subheader("📂 Historial de Agosto / Mes Anterior")
+    st.subheader("📂 Historial del Mes Anterior")
     
-    # Historial base del programa anterior de Agosto obtenido de la imagen
     historial_base_agosto = {
-        "José Pereira": 2,
-        "Javier García": 2,
-        "Sebastián Montero": 2,
-        "Kenneth Solís": 2,
-        "Carlos Josué Pereira": 2,
-        "Julio Sánchez": 1,
-        "David Herrera": 3,
-        "José Alberto González": 2,
-        "Dáshler Sánchez": 2,
-        "Elixander Alvarado": 2,
-        "Rafael Segura": 2,
-        "Carlos Enrique Pereira": 1,
-        "Walter Sánchez": 1,
-        "Rodney Alfaro": 2,
-        "Josué López": 2,
-        "Iván Zamora": 1,
-        "Carlos Blanco": 1,
-        "Geremy Fernández": 1,
-        "Roger Loaiza": 1
+        "José Pereira": 2, "Javier García": 2, "Sebastián Montero": 2,
+        "Kenneth Solís": 2, "Carlos Josué Pereira": 2, "Julio Sánchez": 1,
+        "David Herrera": 3, "José Alberto González": 2, "Dáshler Sánchez": 2,
+        "Elixander Alvarado": 2, "Rafael Segura": 2, "Carlos Enrique Pereira": 1,
+        "Walter Sánchez": 1, "Rodney Alfaro": 2, "Josué López": 2,
+        "Iván Zamora": 1, "Carlos Blanco": 1, "Geremy Fernández": 1, "Roger Loaiza": 1
     }
 
     fechas_base_agosto = {
@@ -261,7 +248,7 @@ if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado"
     st.session_state.periodo_cargado = config_actual
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("🎓 **Reglas Activas:** Audio para **Nuevos Integrantes**, Video para **Locales con Llave** y Acomodador exclusivamente para **Ancianos/SM**.")
+st.info("💚 **Límite de Equilibrio Familiar Activo:** Ningún hermano tendrá más de **2 asignaciones al mes** para asegurar su descanso y convivencia.")
 
 datos_programa_final = []
 
@@ -269,9 +256,12 @@ conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
 ultimo_puesto_av = {h: None for h in hermanos_av}
 ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
 ultima_fecha_asignado = {h: fechas_base_agosto.get(h, None) for h in todos_hermanos}
-conteo_ivan_mes = {}
 
-# --- 3. ALGORITMO DE ASIGNACIÓN ---
+# Diccionario para controlar el máximo de 2 asignaciones por mes por hermano
+# Estructura: {(hermano, 'YYYY-MM'): cantidad}
+conteo_mes_actual = {}
+
+# --- 3. ALGORITMO DE ASIGNACIÓN CON CONTROL MÁXIMO DE 2/MES ---
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
@@ -320,89 +310,90 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 dt_obj = datetime.date(anio, 1, 1)
                 clave_mes = "actual"
 
+            # Función para filtrar hermanos que ya alcanzaron el tope mensual (2 asignaciones)
+            def esta_disponible_mes(hermano):
+                cant = conteo_mes_actual.get((hermano, clave_mes), 0)
+                return cant < MAX_ASIGNACIONES_MES
+
             def score_candidato(hermano, es_mic=False):
                 dias_desde_ultimo = 999
                 if ultima_fecha_asignado.get(hermano) is not None:
                     dias_desde_ultimo = (dt_obj - ultima_fecha_asignado[hermano]).days
                 
                 penalizacion_descanso = 5000 if dias_desde_ultimo < DIAS_DESCANSO_MINIMO else 0
-                conteo = conteo_acumulado.get(hermano, 0)
+                conteo_mes = conteo_mes_actual.get((hermano, clave_mes), 0)
+                conteo_gen = conteo_acumulado.get(hermano, 0)
                 
                 repeticion_dia = 0
                 if es_mic and ultimo_tipo_dia_mic.get(hermano) == tipo_dia_actual:
                     repeticion_dia = 5
                     
-                return (penalizacion_descanso, conteo, repeticion_dia)
+                # Se prioriza al que tenga menos asignaciones en el mes actual y general
+                return (penalizacion_descanso, conteo_mes, conteo_gen, repeticion_dia)
+
+            def registrar_asignacion(hermano, puesto):
+                if hermano:
+                    excluidos.add(hermano)
+                    conteo_acumulado[hermano] = conteo_acumulado.get(hermano, 0) + 1
+                    conteo_mes_actual[(hermano, clave_mes)] = conteo_mes_actual.get((hermano, clave_mes), 0) + 1
+                    ultima_fecha_asignado[hermano] = dt_obj
 
             # 1. ASIGNAR AUDIO (Nuevos integrantes)
-            cand_audio = [h for h in hermanos_nuevos if h not in excluidos]
+            cand_audio = [h for h in hermanos_nuevos if h not in excluidos and esta_disponible_mes(h)]
+            if not cand_audio: # Fallback si todos los nuevos completaron sus 2 turnos
+                cand_audio = [h for h in hermanos_nuevos if h not in excluidos]
             if not cand_audio:
                 cand_audio = [h for h in hermanos_av if h not in excluidos]
                 
             cand_audio.sort(key=lambda h: score_candidato(h))
             h_audio = cand_audio[0] if cand_audio else ""
-            if h_audio:
-                excluidos.add(h_audio)
+            registrar_asignacion(h_audio, "Audio")
 
             # 2. ASIGNAR VIDEO (Hermano local experimentado con llave)
-            cand_video = [h for h in hermanos_locales if h not in excluidos]
+            cand_video = [h for h in hermanos_locales if h not in excluidos and esta_disponible_mes(h)]
+            if not cand_video:
+                cand_video = [h for h in hermanos_locales if h not in excluidos]
             if not cand_video:
                 cand_video = [h for h in hermanos_av if h not in excluidos]
                 
             cand_video.sort(key=lambda h: score_candidato(h))
             h_video = cand_video[0] if cand_video else ""
-            if h_video:
-                excluidos.add(h_video)
-
-            # Actualizar conteos de A/V
-            if h_audio:
-                conteo_acumulado[h_audio] = conteo_acumulado.get(h_audio, 0) + 1
-                ultimo_puesto_av[h_audio] = 'Audio'
-                ultima_fecha_asignado[h_audio] = dt_obj
-            if h_video:
-                conteo_acumulado[h_video] = conteo_acumulado.get(h_video, 0) + 1
-                ultimo_puesto_av[h_video] = 'Video'
-                ultima_fecha_asignado[h_video] = dt_obj
+            registrar_asignacion(h_video, "Video")
 
             # 3. ASIGNAR MICRÓFONO
-            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Carlos Enrique Pereira"]
+            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Carlos Enrique Pereira" and esta_disponible_mes(h)]
             
             if not es_domingo:
                 candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
 
             if not candidatos_mic:
-                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Carlos Enrique Pereira"]
+                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Carlos Enrique Pereira" and esta_disponible_mes(h)]
                 if not es_domingo:
                     candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
 
-            if conteo_ivan_mes.get(clave_mes, 0) >= 2:
-                candidatos_mic = [h for h in candidatos_mic if "Iván Chavarría" not in h and "Iván Zamora" not in h]
+            # Si ya se agotaron los que tienen menos de 2 en el mes, se permite fallback
+            if not candidatos_mic:
+                candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Carlos Enrique Pereira"]
 
             candidatos_mic.sort(key=lambda h: score_candidato(h, es_mic=True))
 
             h_mic = candidatos_mic[0] if candidatos_mic else ""
             if h_mic:
-                excluidos.add(h_mic)
-                conteo_acumulado[h_mic] = conteo_acumulado.get(h_mic, 0) + 1
+                registrar_asignacion(h_mic, "Micrófono")
                 ultimo_tipo_dia_mic[h_mic] = tipo_dia_actual
-                ultima_fecha_asignado[h_mic] = dt_obj
-                
-                if "Iván Chavarría" in h_mic or "Iván Zamora" in h_mic:
-                    conteo_ivan_mes[clave_mes] = conteo_ivan_mes.get(clave_mes, 0) + 1
 
-            # 4. ASIGNAR ACOMODADOR (Exclusivamente de hermanos_aco)
-            candidatos_aco = [h for h in hermanos_aco if h not in excluidos]
+            # 4. ASIGNAR ACOMODADOR (Exclusivamente Ancianos y Siervos Ministeriales)
+            candidatos_aco = [h for h in hermanos_aco if h not in excluidos and esta_disponible_mes(h)]
+            if not candidatos_aco:
+                candidatos_aco = [h for h in hermanos_aco if h not in excluidos]
             if not candidatos_aco:
                 candidatos_aco = [h for h in hermanos_aco]
 
             candidatos_aco.sort(key=lambda h: score_candidato(h))
             h_aco = candidatos_aco[0] if candidatos_aco else ""
-            if h_aco:
-                excluidos.add(h_aco)
-                conteo_acumulado[h_aco] = conteo_acumulado.get(h_aco, 0) + 1
-                ultima_fecha_asignado[h_aco] = dt_obj
+            registrar_asignacion(h_aco, "Acomodador")
 
-            st.caption(f"🤖 **Asignación:** Audio: *{h_audio}* (Nuevo) | Video: *{h_video}* (Local/Llave) | Mic: *{h_mic}* | Acomodador: *{h_aco}* (Anciano/SM)")
+            st.caption(f"🤖 **Asignación:** Audio: *{h_audio}* | Video: *{h_video}* | Mic: *{h_mic}* | Acomodador: *{h_aco}*")
 
             datos_programa_final.append({
                 "Fecha": reun['fecha'],
