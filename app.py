@@ -182,7 +182,6 @@ with st.sidebar:
     st.subheader("🔑 Clasificación de Grupos")
 
     # 1. Hermanos Locales con Llave y Experiencia (Video)
-    # Se EXCLUYE a José Alberto González de Video
     video_locales_defecto = [
         "José Pereira",
         "Carlos Josué Pereira",
@@ -197,7 +196,7 @@ with st.sidebar:
     video_txt = st.text_area("🖥️ Diestros en VIDEO (Locales con experiencia y llave):", value="\n".join(video_locales_defecto), height=150)
     hermanos_video = [h.strip() for h in video_txt.split("\n") if h.strip()]
 
-    # 2. Los 7 Nuevos integrantes + José Alberto González (Audio)
+    # 2. Los Nuevos + José Alberto González (Audio)
     nuevos_defecto = [
         "Adiel Arias",
         "Fran Vega",
@@ -206,7 +205,7 @@ with st.sidebar:
         "Jossy Quesada",
         "Henry Altamirano",
         "Evans Arguedas",
-        "José Alberto González"  # Asignado preferentemente a Audio
+        "José Alberto González"
     ]
     audio_txt = st.text_area("🎙️ Asignables a AUDIO (Nuevos + José Alberto González):", value="\n".join(nuevos_defecto), height=160)
     hermanos_audio = [h.strip() for h in audio_txt.split("\n") if h.strip()]
@@ -222,15 +221,12 @@ with st.sidebar:
         "Javier García"
     ]
 
-    # Total Acomodadores
     aco_defecto = sorted(list(set(ancianos_min_defecto + hermanos_audio + ["Rodney Alfaro"])))
     aco_txt = st.text_area("🚪 Lista para ACOMODADORES:", value="\n".join(aco_defecto), height=160)
     hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
 
-    # Todos los hermanos registrados
     todos_hermanos = sorted(list(set(hermanos_video + hermanos_audio + hermanos_aco + ["Iván Chavarría", "Carlos Blanco"])))
 
-    # Micrófonos
     mic_defecto = [h for h in todos_hermanos if h != "Carlos Enrique Pereira"]
     mic_txt = st.text_area("🎤 Autorizados para MICRÓFONOS:", value="\n".join(mic_defecto), height=140)
     hermanos_mic = [h.strip() for h in mic_txt.split("\n") if h.strip()]
@@ -247,18 +243,19 @@ if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado"
     st.session_state.periodo_cargado = config_actual
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("📌 **Reglas Ajustadas:** José Alberto González únicamente en Audio/Mic/Acomodador. David Herrera excluido de los DOMINGOS.")
+st.info("📌 **Reglas Activas:** Variación de parejas entre hermanos (ensanchamiento), José Alberto solo en Audio/Mic/Acomodador y David Herrera excluido de los Domingos.")
 
 datos_programa_final = []
 
 conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
 ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
 ultima_fecha_asignado = {h: fechas_base_agosto.get(h, None) for h in todos_hermanos}
-
-# Control mensual: {(hermano, 'YYYY-MM'): cantidad}
 conteo_mes_actual = {}
 
-# --- 3. ALGORITMO DE ASIGNACIÓN CON REGLAS ACTUALIZADAS ---
+# Rastreo de parejas asignadas previamente
+parejas_historial = set()
+
+# --- 3. ALGORITMO DE ASIGNACIÓN CON VARIACIÓN DE PAREJAS ---
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
@@ -300,7 +297,6 @@ for idx, reun in enumerate(st.session_state.reuniones):
             es_domingo = (reun['dia'] == "Domingo")
             tipo_dia_actual = "Domingo" if es_domingo else "EntreSemana"
             
-            # REGLA: DAVID HERRERA NO SE ASIGNA LOS DOMINGOS EN NINGÚN PUESTO
             if es_domingo:
                 excluidos.add("David Herrera")
 
@@ -310,6 +306,8 @@ for idx, reun in enumerate(st.session_state.reuniones):
             except Exception:
                 dt_obj = datetime.date(anio, 1, 1)
                 clave_mes = "actual"
+
+            asignados_hoy = []
 
             def score_candidato(hermano, es_mic=False):
                 dias_desde_ultimo = 999
@@ -325,12 +323,22 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 repeticion_dia = 0
                 if es_mic and ultimo_tipo_dia_mic.get(hermano) == tipo_dia_actual:
                     repeticion_dia = 10
+
+                # PENALIZACIÓN SI YA TRABAJÓ CON ALGUNOS DE LOS ASIGNADOS DE HOY
+                penalizacion_pareja = 0
+                for otro in asignados_hoy:
+                    par = tuple(sorted([hermano, otro]))
+                    if par in parejas_historial:
+                        penalizacion_pareja += 800  # Prioriza hermanos con los que no ha hecho pareja
                     
-                return (penalizacion_mes + penalizacion_descanso + repeticion_dia, conteo_mes, conteo_gen)
+                return (penalizacion_mes + penalizacion_descanso + penalizacion_pareja + repeticion_dia, conteo_mes, conteo_gen)
 
             def registrar_asignacion(hermano, puesto):
                 if hermano:
                     excluidos.add(hermano)
+                    for otro in asignados_hoy:
+                        parejas_historial.add(tuple(sorted([hermano, otro])))
+                    asignados_hoy.append(hermano)
                     conteo_acumulado[hermano] = conteo_acumulado.get(hermano, 0) + 1
                     conteo_mes_actual[(hermano, clave_mes)] = conteo_mes_actual.get((hermano, clave_mes), 0) + 1
                     ultima_fecha_asignado[hermano] = dt_obj
@@ -344,7 +352,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
             h_audio = cand_audio[0] if cand_audio else ""
             registrar_asignacion(h_audio, "Audio")
 
-            # 2. ASIGNAR VIDEO (Diestros en Video)
+            # 2. ASIGNAR VIDEO
             cand_video = [h for h in hermanos_video if h not in excluidos and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
             if not cand_video:
                 cand_video = [h for h in hermanos_video if h not in excluidos]
