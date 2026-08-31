@@ -181,7 +181,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🔑 Clasificación de Grupos")
 
-    # 1. Hermanos Locales con Llave y Experiencia (Video)
+    # 1. Hermanos Locales con Llave y Experiencia (Video) - INCLUYE A JOSUÉ LÓPEZ
     video_locales_defecto = [
         "José Pereira",
         "Carlos Josué Pereira",
@@ -191,9 +191,10 @@ with st.sidebar:
         "David Herrera",
         "Dáshler Sánchez",
         "Rodney Alfaro",
-        "Kenneth Solís"
+        "Kenneth Solís",
+        "Josué López"
     ]
-    video_txt = st.text_area("🖥️ Diestros en VIDEO (Locales con experiencia y llave):", value="\n".join(video_locales_defecto), height=150)
+    video_txt = st.text_area("🖥️ Diestros en VIDEO (Locales con experiencia y llave):", value="\n".join(video_locales_defecto), height=170)
     hermanos_video = [h.strip() for h in video_txt.split("\n") if h.strip()]
 
     # 2. Los Nuevos + José Alberto González (Audio)
@@ -243,7 +244,7 @@ if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado"
     st.session_state.periodo_cargado = config_actual
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("📌 **Reglas Activas:** Variación de parejas entre hermanos (ensanchamiento), José Alberto solo en Audio/Mic/Acomodador y David Herrera excluido de los Domingos.")
+st.info("📌 **Reglas Activas:** Variación de parejas entre hermanos, Josué López incluido en Video/Mic, José Alberto solo en Audio/Mic/Acomodador y David Herrera excluido de los Domingos.")
 
 datos_programa_final = []
 
@@ -329,7 +330,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 for otro in asignados_hoy:
                     par = tuple(sorted([hermano, otro]))
                     if par in parejas_historial:
-                        penalizacion_pareja += 800  # Prioriza hermanos con los que no ha hecho pareja
+                        penalizacion_pareja += 800
                     
                 return (penalizacion_mes + penalizacion_descanso + penalizacion_pareja + repeticion_dia, conteo_mes, conteo_gen)
 
