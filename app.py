@@ -21,7 +21,7 @@ MESES_LISTA = [
 MESES_DICT = {nombre: i + 1 for i, nombre in enumerate(MESES_LISTA)}
 DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 DIAS_DESCANSO_MINIMO = 10  # Días mínimos entre asignaciones para un mismo hermano
-MAX_ASIGNACIONES_MES = 2   # Máximo de asignaciones permitidas por mes por hermano
+MAX_ASIGNACIONES_MES = 2   # Máximo absoluto por mes
 
 def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles"):
     dias_map = {"Lunes": 0, "Martes": 1, "Miércoles": 2, "Jueves": 3, "Viernes": 4, "Sábado": 5, "Domingo": 6}
@@ -179,7 +179,7 @@ with st.sidebar:
 
     # --- CLASIFICACIÓN DE HERMANOS ---
     st.markdown("---")
-    st.subheader("🔑 Clasificación de Cabina")
+    st.subheader("🔑 Clasificación de Grupos")
 
     # 1. Hermanos Locales con Llave y Experiencia (Supervisión / Video)
     locales_defecto = [
@@ -194,10 +194,10 @@ with st.sidebar:
         "Rodney Alfaro",
         "Kenneth Solís"
     ]
-    locales_txt = st.text_area("🔑 Hermanos LOCALES (Experiencia / Video y Llave):", value="\n".join(locales_defecto), height=160)
+    locales_txt = st.text_area("🔑 Hermanos LOCALES (Experiencia / Video y Llave):", value="\n".join(locales_defecto), height=150)
     hermanos_locales = [h.strip() for h in locales_txt.split("\n") if h.strip()]
 
-    # 2. Los 7 Nuevos integrantes a entrenar en Audio
+    # 2. Los 7 Nuevos integrantes (Entrenamiento en Audio, Micrófono y Acomodador)
     nuevos_defecto = [
         "Adiel Arias",
         "Fran Vega",
@@ -207,33 +207,32 @@ with st.sidebar:
         "Henry Altamirano",
         "Evans Arguedas"
     ]
-    nuevos_txt = st.text_area("🌱 NUEVOS Integrantes (Audio / Entrenamiento):", value="\n".join(nuevos_defecto), height=160)
+    nuevos_txt = st.text_area("🌱 NUEVOS Integrantes (Audio / Mic / Acomodador):", value="\n".join(nuevos_defecto), height=150)
     hermanos_nuevos = [h.strip() for h in nuevos_txt.split("\n") if h.strip()]
 
-    # 3. Acomodadores (ÚNICAMENTE Ancianos y Siervos Ministeriales)
-    aco_defecto = [
+    # 3. Ancianos y Siervos Ministeriales (5 Ancianos + 2 Ministeriales)
+    ancianos_min_defecto = [
         "Carlos Enrique Pereira",
         "Elixander Alvarado",
         "Walter Sánchez",
         "Rafael Segura",
         "José Pereira",
         "Julio Sánchez",
-        "Javier García",
-        "José Alberto González",
-        "Rodney Alfaro"
+        "Javier García"
     ]
-    aco_txt = st.text_area("🚪 Acomodadores (SOLO Ancianos y Siervos Ministeriales):", value="\n".join(sorted(aco_defecto)), height=160)
+
+    # Total de Acomodadores: Ancianos, Ministeriales + Nuevos
+    aco_defecto = sorted(list(set(ancianos_min_defecto + hermanos_nuevos + ["José Alberto González", "Rodney Alfaro"])))
+    aco_txt = st.text_area("🚪 Lista para ACOMODADORES (Ancianos, Ministeriales y Nuevos):", value="\n".join(aco_defecto), height=160)
     hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
 
-    # Total de integrantes para A/V
+    # Todos los hermanos registrados
     hermanos_av = list(set(hermanos_locales + hermanos_nuevos))
-    
-    # Total de hermanos
     todos_hermanos = sorted(list(set(hermanos_av + hermanos_aco + ["Iván Chavarría", "Carlos Blanco"])))
 
-    # Micrófonos
+    # Micrófonos: Incluye a los nuevos, ancianos, ministeriales y demás hermanos autorizados
     mic_defecto = [h for h in todos_hermanos if h != "Carlos Enrique Pereira"]
-    mic_txt = st.text_area("🎤 Autorizados para Micrófonos:", value="\n".join(mic_defecto), height=140)
+    mic_txt = st.text_area("🎤 Autorizados para MICRÓFONOS:", value="\n".join(mic_defecto), height=140)
     hermanos_mic = [h.strip() for h in mic_txt.split("\n") if h.strip()]
 
 # --- 2. INICIALIZACIÓN Y ACTUALIZACIÓN DE SESIÓN ---
@@ -248,20 +247,18 @@ if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado"
     st.session_state.periodo_cargado = config_actual
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("💚 **Límite de Equilibrio Familiar Activo:** Ningún hermano tendrá más de **2 asignaciones al mes** para asegurar su descanso y convivencia.")
+st.info("💙 **Equilibrio Familiar:** Se prioriza asignar **máximo 1 vez al mes** por hermano. Nuevos integrantes integrados en Audio, Micrófonos y Acomodadores.")
 
 datos_programa_final = []
 
 conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
-ultimo_puesto_av = {h: None for h in hermanos_av}
 ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
 ultima_fecha_asignado = {h: fechas_base_agosto.get(h, None) for h in todos_hermanos}
 
-# Diccionario para controlar el máximo de 2 asignaciones por mes por hermano
-# Estructura: {(hermano, 'YYYY-MM'): cantidad}
+# Diccionario para controlar el máximo mensual: {(hermano, 'YYYY-MM'): cantidad}
 conteo_mes_actual = {}
 
-# --- 3. ALGORITMO DE ASIGNACIÓN CON CONTROL MÁXIMO DE 2/MES ---
+# --- 3. ALGORITMO DE ASIGNACIÓN CON PRIORIDAD DE 1 VEZ AL MES ---
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
@@ -310,11 +307,6 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 dt_obj = datetime.date(anio, 1, 1)
                 clave_mes = "actual"
 
-            # Función para filtrar hermanos que ya alcanzaron el tope mensual (2 asignaciones)
-            def esta_disponible_mes(hermano):
-                cant = conteo_mes_actual.get((hermano, clave_mes), 0)
-                return cant < MAX_ASIGNACIONES_MES
-
             def score_candidato(hermano, es_mic=False):
                 dias_desde_ultimo = 999
                 if ultima_fecha_asignado.get(hermano) is not None:
@@ -324,12 +316,14 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 conteo_mes = conteo_mes_actual.get((hermano, clave_mes), 0)
                 conteo_gen = conteo_acumulado.get(hermano, 0)
                 
+                # Penalización muy fuerte si ya tiene 1 o más asignaciones este mes (prioriza dar 1 vez al mes)
+                penalizacion_mes = conteo_mes * 1000
+                
                 repeticion_dia = 0
                 if es_mic and ultimo_tipo_dia_mic.get(hermano) == tipo_dia_actual:
-                    repeticion_dia = 5
+                    repeticion_dia = 10
                     
-                # Se prioriza al que tenga menos asignaciones en el mes actual y general
-                return (penalizacion_descanso, conteo_mes, conteo_gen, repeticion_dia)
+                return (penalizacion_mes + penalizacion_descanso + repeticion_dia, conteo_mes, conteo_gen)
 
             def registrar_asignacion(hermano, puesto):
                 if hermano:
@@ -338,21 +332,17 @@ for idx, reun in enumerate(st.session_state.reuniones):
                     conteo_mes_actual[(hermano, clave_mes)] = conteo_mes_actual.get((hermano, clave_mes), 0) + 1
                     ultima_fecha_asignado[hermano] = dt_obj
 
-            # 1. ASIGNAR AUDIO (Nuevos integrantes)
-            cand_audio = [h for h in hermanos_nuevos if h not in excluidos and esta_disponible_mes(h)]
-            if not cand_audio: # Fallback si todos los nuevos completaron sus 2 turnos
-                cand_audio = [h for h in hermanos_nuevos if h not in excluidos]
+            # 1. ASIGNAR AUDIO (Nuevos integrantes prioritarios)
+            cand_audio = [h for h in hermanos_nuevos if h not in excluidos and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
             if not cand_audio:
-                cand_audio = [h for h in hermanos_av if h not in excluidos]
+                cand_audio = [h for h in hermanos_av if h not in excluidos and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
                 
             cand_audio.sort(key=lambda h: score_candidato(h))
             h_audio = cand_audio[0] if cand_audio else ""
             registrar_asignacion(h_audio, "Audio")
 
-            # 2. ASIGNAR VIDEO (Hermano local experimentado con llave)
-            cand_video = [h for h in hermanos_locales if h not in excluidos and esta_disponible_mes(h)]
-            if not cand_video:
-                cand_video = [h for h in hermanos_locales if h not in excluidos]
+            # 2. ASIGNAR VIDEO (Hermano local experimentado)
+            cand_video = [h for h in hermanos_locales if h not in excluidos and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
             if not cand_video:
                 cand_video = [h for h in hermanos_av if h not in excluidos]
                 
@@ -360,20 +350,14 @@ for idx, reun in enumerate(st.session_state.reuniones):
             h_video = cand_video[0] if cand_video else ""
             registrar_asignacion(h_video, "Video")
 
-            # 3. ASIGNAR MICRÓFONO
-            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Carlos Enrique Pereira" and esta_disponible_mes(h)]
+            # 3. ASIGNAR MICRÓFONO (Incluye a todos los calificados y nuevos)
+            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Carlos Enrique Pereira" and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
             
             if not es_domingo:
                 candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
 
             if not candidatos_mic:
-                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Carlos Enrique Pereira" and esta_disponible_mes(h)]
-                if not es_domingo:
-                    candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
-
-            # Si ya se agotaron los que tienen menos de 2 en el mes, se permite fallback
-            if not candidatos_mic:
-                candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Carlos Enrique Pereira"]
+                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Carlos Enrique Pereira"]
 
             candidatos_mic.sort(key=lambda h: score_candidato(h, es_mic=True))
 
@@ -382,12 +366,10 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 registrar_asignacion(h_mic, "Micrófono")
                 ultimo_tipo_dia_mic[h_mic] = tipo_dia_actual
 
-            # 4. ASIGNAR ACOMODADOR (Exclusivamente Ancianos y Siervos Ministeriales)
-            candidatos_aco = [h for h in hermanos_aco if h not in excluidos and esta_disponible_mes(h)]
+            # 4. ASIGNAR ACOMODADOR (Ancianos, Siervos y Nuevos)
+            candidatos_aco = [h for h in hermanos_aco if h not in excluidos and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
             if not candidatos_aco:
                 candidatos_aco = [h for h in hermanos_aco if h not in excluidos]
-            if not candidatos_aco:
-                candidatos_aco = [h for h in hermanos_aco]
 
             candidatos_aco.sort(key=lambda h: score_candidato(h))
             h_aco = candidatos_aco[0] if candidatos_aco else ""
