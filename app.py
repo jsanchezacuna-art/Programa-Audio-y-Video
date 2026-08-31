@@ -107,7 +107,19 @@ with st.sidebar:
             if archivo_historial.name.endswith(".csv"):
                 df_hist = pd.read_csv(archivo_historial)
             else:
-                df_hist = pd.read_excel(archivo_historial)
+                try:
+                    df_hist = pd.read_excel(archivo_historial, engine="openpyxl")
+                except Exception:
+                    archivo_historial.seek(0)
+                    df_hist = pd.read_excel(archivo_historial)
+
+            # Detectar fila de encabezados reales si el Excel trae banner de título arriba
+            for idx_row, row in df_hist.iterrows():
+                row_str = row.astype(str).tolist()
+                if any("Audio" in cell for cell in row_str) and any("Video" in cell for cell in row_str):
+                    df_hist.columns = df_hist.iloc[idx_row]
+                    df_hist = df_hist.iloc[idx_row + 1:].reset_index(drop=True)
+                    break
                 
             for col in ["Audio", "Video", "Micrófono", "Acomodador"]:
                 if col in df_hist.columns:
@@ -117,15 +129,15 @@ with st.sidebar:
                             nom_str = nom_str.replace("Zamora", "Chavarría")
                         if nom_str and "NO HAY" not in nom_str and nom_str != "-- Sin asignar --":
                             conteo_historial[nom_str] = conteo_historial.get(nom_str, 0) + 1
-            st.success(f"¡Historial cargado con éxito!")
-        except Exception:
-            st.error("Error al leer el archivo.")
+            st.success("¡Historial cargado con éxito!")
+        except Exception as e:
+            st.error(f"Error al leer el archivo: {e}")
 
     # --- LISTAS DE HERMANOS ---
     st.markdown("---")
     st.subheader("👥 Hermanos Autorizados por Puesto")
 
-    # 1. Audio y Video (Se remueve Geremy Fernández)
+    # 1. Audio y Video (Sin Geremy Fernández)
     av_defecto = [
         "José Pereira",
         "José Alberto González",
@@ -157,7 +169,7 @@ with st.sidebar:
     solo_audio_txt = st.text_area("⚠️ Hermanos autorizados SOLO para Audio (No Video):", value="\n".join(solo_audio_defecto), height=80)
     hermanos_solo_audio = [h.strip() for h in solo_audio_txt.split("\n") if h.strip()]
 
-    # 2. Acomodadores (Se remueven Geremy Fernández y Roger Loaiza)
+    # 2. Acomodadores (Sin Geremy Fernández ni Roger Loaiza)
     aco_defecto = [
         "Rafael Segura",
         "Rodney Alfaro",
@@ -254,7 +266,6 @@ for idx, reun in enumerate(st.session_state.reuniones):
             es_domingo = (reun['dia'] == "Domingo")
             tipo_dia_actual = "Domingo" if es_domingo else "EntreSemana"
             
-            # Fecha objeto actual
             try:
                 dt_obj = datetime.datetime.strptime(reun['fecha'], "%d/%m/%Y").date()
                 clave_mes = dt_obj.strftime("%Y-%m")
@@ -262,7 +273,6 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 dt_obj = datetime.date(anio, 1, 1)
                 clave_mes = "actual"
 
-            # Función de ordenamiento considerando descanso en días
             def score_candidato(hermano, ultimo_puesto_deseado=None, es_mic=False):
                 dias_desde_ultimo = 999
                 if ultima_fecha_asignado.get(hermano) is not None:
@@ -303,7 +313,6 @@ for idx, reun in enumerate(st.session_state.reuniones):
             if h_video:
                 excluidos.add(h_video)
 
-            # Actualizar historial Audio/Video
             if h_audio:
                 conteo_acumulado[h_audio] = conteo_acumulado.get(h_audio, 0) + 1
                 ultimo_puesto_av[h_audio] = 'Audio'
@@ -316,7 +325,6 @@ for idx, reun in enumerate(st.session_state.reuniones):
             # 3. ASIGNAR MICRÓFONO
             candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Carlos Enrique Pereira"]
             
-            # REGLA CARLOS BLANCO Y WALTER SÁNCHEZ: Solo Micrófonos en DOMINGOS
             if not es_domingo:
                 candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
 
@@ -325,7 +333,6 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 if not es_domingo:
                     candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
 
-            # Regla Iván Chavarría: máx 2 veces al mes
             if conteo_ivan_mes.get(clave_mes, 0) >= 2:
                 candidatos_mic = [h for h in candidatos_mic if "Iván Chavarría" not in h and "Iván Zamora" not in h]
 
