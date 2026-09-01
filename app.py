@@ -128,8 +128,8 @@ with st.sidebar:
     }
 
     archivo_historial = st.file_uploader(
-        "Sube un archivo adicional de historial (opcional Excel/CSV):",
-        type=["xlsx", "xls", "csv"]
+        "Sube un archivo adicional de historial (opcional Excel/CSV/HTML):",
+        type=["xlsx", "xls", "csv", "html"]
     )
     
     conteo_historial = historial_base_agosto.copy()
@@ -139,6 +139,7 @@ with st.sidebar:
             contenido = archivo_historial.read()
             df_hist = None
 
+            # 1. Intentar leer como tabla HTML (archivos exportados por la app)
             try:
                 dfs = pd.read_html(io.BytesIO(contenido))
                 if dfs:
@@ -146,34 +147,42 @@ with st.sidebar:
             except Exception:
                 pass
 
+            # 2. Intentar leer como CSV
             if df_hist is None:
                 try:
                     df_hist = pd.read_csv(io.BytesIO(contenido))
                 except Exception:
                     pass
 
+            # 3. Intentar leer como Excel nativo (.xlsx) sin detener la app si falta openpyxl
             if df_hist is None:
                 try:
-                    df_hist = pd.read_excel(io.BytesIO(contenido))
+                    df_hist = pd.read_excel(io.BytesIO(contenido), engine='openpyxl')
+                except ImportError:
+                    try:
+                        df_hist = pd.read_excel(io.BytesIO(contenido))
+                    except Exception:
+                        st.warning("⚠️ Para procesar archivos .xlsx nativos de Excel, se recomienda instalar 'openpyxl' (`pip install openpyxl`). También puedes subir el archivo guardándolo como CSV o HTML.")
                 except Exception:
-                    raise RuntimeError("Si usas archivos .xlsx nativos, instala 'openpyxl'.")
+                    pass
 
-            for idx_row, row in df_hist.iterrows():
-                row_str = row.astype(str).tolist()
-                if any("Audio" in cell for cell in row_str) and any("Video" in cell for cell in row_str):
-                    df_hist.columns = df_hist.iloc[idx_row]
-                    df_hist = df_hist.iloc[idx_row + 1:].reset_index(drop=True)
-                    break
-                
-            for col in ["Audio", "Video", "Micrófono", "Acomodador"]:
-                if col in df_hist.columns:
-                    for nombre in df_hist[col].dropna():
-                        nom_str = str(nombre).strip()
-                        if "Zamora" in nom_str:
-                            nom_str = nom_str.replace("Zamora", "Chavarría")
-                        if nom_str and "NO HAY" not in nom_str and nom_str != "-- Sin asignar --":
-                            conteo_historial[nom_str] = conteo_historial.get(nom_str, 0) + 1
-            st.success("¡Archivo de historial cargado!")
+            if df_hist is not None:
+                for idx_row, row in df_hist.iterrows():
+                    row_str = row.astype(str).tolist()
+                    if any("Audio" in cell for cell in row_str) and any("Video" in cell for cell in row_str):
+                        df_hist.columns = df_hist.iloc[idx_row]
+                        df_hist = df_hist.iloc[idx_row + 1:].reset_index(drop=True)
+                        break
+                    
+                for col in ["Audio", "Video", "Micrófono", "Acomodador"]:
+                    if col in df_hist.columns:
+                        for nombre in df_hist[col].dropna():
+                            nom_str = str(nombre).strip()
+                            if "Zamora" in nom_str:
+                                nom_str = nom_str.replace("Zamora", "Chavarría")
+                            if nom_str and "NO HAY" not in nom_str and nom_str != "-- Sin asignar --":
+                                conteo_historial[nom_str] = conteo_historial.get(nom_str, 0) + 1
+                st.success("¡Archivo de historial cargado!")
         except Exception as e:
             st.error(f"Error al procesar el archivo: {e}")
 
@@ -181,7 +190,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🔑 Clasificación de Grupos")
 
-    # 1. Hermanos Locales con Llave y Experiencia (Video) - INCLUYE A JOSUÉ LÓPEZ
+    # 1. Hermanos Locales con Llave y Experiencia (Video)
     video_locales_defecto = [
         "José Pereira",
         "Carlos Josué Pereira",
