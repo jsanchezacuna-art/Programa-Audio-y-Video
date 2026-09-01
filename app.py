@@ -1,13 +1,3 @@
-import sys
-import subprocess
-
-# --- INSTALACIÓN AUTOMÁTICA DE OPENPYXL SI NO ESTÁ INSTALADO ---
-try:
-    import openpyxl
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl"])
-    import openpyxl
-
 import streamlit as st
 import streamlit.components.v1 as components
 import datetime
@@ -164,15 +154,17 @@ with st.sidebar:
                 except Exception:
                     pass
 
-            # 3. Lectura de Excel con openpyxl (instalado automáticamente arriba)
+            # 3. Intentar leer como Excel nativo (.xlsx) sin detener la app si falta openpyxl
             if df_hist is None:
                 try:
                     df_hist = pd.read_excel(io.BytesIO(contenido), engine='openpyxl')
-                except Exception:
+                except ImportError:
                     try:
                         df_hist = pd.read_excel(io.BytesIO(contenido))
                     except Exception:
-                        pass
+                        st.warning("⚠️ Para procesar archivos .xlsx nativos de Excel, se recomienda instalar 'openpyxl' (`pip install openpyxl`). También puedes subir el archivo guardándolo como CSV o HTML.")
+                except Exception:
+                    pass
 
             if df_hist is not None:
                 for idx_row, row in df_hist.iterrows():
@@ -191,8 +183,6 @@ with st.sidebar:
                             if nom_str and "NO HAY" not in nom_str and nom_str != "-- Sin asignar --":
                                 conteo_historial[nom_str] = conteo_historial.get(nom_str, 0) + 1
                 st.success("¡Archivo de historial cargado!")
-            else:
-                st.error("No se pudo leer el contenido del archivo subido.")
         except Exception as e:
             st.error(f"Error al procesar el archivo: {e}")
 
@@ -200,6 +190,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🔑 Clasificación de Grupos")
 
+    # 1. Hermanos Locales con Llave y Experiencia (Video)
     video_locales_defecto = [
         "José Pereira",
         "Carlos Josué Pereira",
@@ -215,6 +206,7 @@ with st.sidebar:
     video_txt = st.text_area("🖥️ Diestros en VIDEO (Locales con experiencia y llave):", value="\n".join(video_locales_defecto), height=170)
     hermanos_video = [h.strip() for h in video_txt.split("\n") if h.strip()]
 
+    # 2. Los Nuevos + José Alberto González (Audio)
     nuevos_defecto = [
         "Adiel Arias",
         "Fran Vega",
@@ -228,6 +220,7 @@ with st.sidebar:
     audio_txt = st.text_area("🎙️ Asignables a AUDIO (Nuevos + José Alberto González):", value="\n".join(nuevos_defecto), height=160)
     hermanos_audio = [h.strip() for h in audio_txt.split("\n") if h.strip()]
 
+    # 3. Ancianos y Siervos Ministeriales (Acomodadores)
     ancianos_min_defecto = [
         "Carlos Enrique Pereira",
         "Elixander Alvarado",
@@ -269,6 +262,7 @@ ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
 ultima_fecha_asignado = {h: fechas_base_agosto.get(h, None) for h in todos_hermanos}
 conteo_mes_actual = {}
 
+# Rastreo de parejas asignadas previamente
 parejas_historial = set()
 
 # --- 3. ALGORITMO DE ASIGNACIÓN CON VARIACIÓN DE PAREJAS ---
@@ -340,6 +334,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 if es_mic and ultimo_tipo_dia_mic.get(hermano) == tipo_dia_actual:
                     repeticion_dia = 10
 
+                # PENALIZACIÓN SI YA TRABAJÓ CON ALGUNOS DE LOS ASIGNADOS DE HOY
                 penalizacion_pareja = 0
                 for otro in asignados_hoy:
                     par = tuple(sorted([hermano, otro]))
