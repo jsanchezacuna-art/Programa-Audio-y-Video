@@ -139,7 +139,7 @@ with st.sidebar:
             contenido = archivo_historial.read()
             df_hist = None
 
-            # 1. Intentar leer como tabla HTML (archivos exportados por la app)
+            # 1. Intentar leer como tabla HTML
             try:
                 dfs = pd.read_html(io.BytesIO(contenido))
                 if dfs:
@@ -154,17 +154,15 @@ with st.sidebar:
                 except Exception:
                     pass
 
-            # 3. Intentar leer como Excel nativo (.xlsx) sin detener la app si falta openpyxl
+            # 3. Intentar leer como Excel nativo (.xlsx)
             if df_hist is None:
                 try:
                     df_hist = pd.read_excel(io.BytesIO(contenido), engine='openpyxl')
-                except ImportError:
+                except Exception:
                     try:
                         df_hist = pd.read_excel(io.BytesIO(contenido))
                     except Exception:
-                        st.warning("⚠️ Para procesar archivos .xlsx nativos de Excel, se recomienda instalar 'openpyxl' (`pip install openpyxl`). También puedes subir el archivo guardándolo como CSV o HTML.")
-                except Exception:
-                    pass
+                        st.warning("⚠️️ Para procesar archivos .xlsx, se recomienda instalar 'openpyxl'. O bien sube el archivo como CSV o HTML.")
 
             if df_hist is not None:
                 for idx_row, row in df_hist.iterrows():
@@ -255,15 +253,16 @@ if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado"
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
 st.info("📌 **Reglas Activas:** Variación de parejas entre hermanos, Josué López incluido en Video/Mic, José Alberto solo en Audio/Mic/Acomodador y David Herrera excluido de los Domingos.")
 
+# ESTRUCTURAS DE SEGUIMIENTO REINICIALIZADAS PARA CADA CORRIDA
 datos_programa_final = []
-
 conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
 ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
 ultima_fecha_asignado = {h: fechas_base_agosto.get(h, None) for h in todos_hermanos}
 conteo_mes_actual = {}
-
-# Rastreo de parejas asignadas previamente
 parejas_historial = set()
+
+# Variable para gestionar la eliminación segura fuera de iteración
+indice_a_eliminar = None
 
 # --- 3. ALGORITMO DE ASIGNACIÓN CON VARIACIÓN DE PAREJAS ---
 for idx, reun in enumerate(st.session_state.reuniones):
@@ -281,8 +280,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
             st.write("")
             st.write("")
             if st.button("🗑️", key=f"del_{idx}"):
-                st.session_state.reuniones.pop(idx)
-                st.rerun()
+                indice_a_eliminar = idx
 
         if reun['sin_reunion']:
             st.warning("⚠️ Reunión cancelada / Semana de Asamblea.")
@@ -334,7 +332,6 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 if es_mic and ultimo_tipo_dia_mic.get(hermano) == tipo_dia_actual:
                     repeticion_dia = 10
 
-                # PENALIZACIÓN SI YA TRABAJÓ CON ALGUNOS DE LOS ASIGNADOS DE HOY
                 penalizacion_pareja = 0
                 for otro in asignados_hoy:
                     par = tuple(sorted([hermano, otro]))
@@ -406,6 +403,11 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 "Micrófono": h_mic,
                 "Acomodador": h_aco
             })
+
+# Ejecución limpia de eliminación fuera del bucle
+if indice_a_eliminar is not None:
+    st.session_state.reuniones.pop(indice_a_eliminar)
+    st.rerun()
 
 # --- 4. VISTA PREVIA Y DESCARGAS ---
 filas_html = ""
