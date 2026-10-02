@@ -56,7 +56,7 @@ def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles
 
 # --- 1. BARRA LATERAL (CONFIGURACIÓN Y CLASIFICACIÓN) ---
 with st.sidebar:
-    st.header("⚙️️ Configuración del Período")
+    st.header("⚙️ Configuración del Período")
     congregacion = st.text_input("Nombre de la Congregación", "El Gallito")
     
     anio = st.number_input("Año", min_value=2024, max_value=2035, value=2026, step=1)
@@ -194,7 +194,7 @@ with st.sidebar:
         "José Alberto González"
     ]
 
-    # 1. VIDEO (Se incluye a Dáshler Sánchez y a todos los autorizados; se excluye a José Alberto González)
+    # 1. VIDEO (Se incluye a Dáshler Sánchez y a todos los autorizados; excluido José Alberto González)
     video_locales_defecto = sorted(list(set([
         "José Pereira",
         "Carlos Josué Pereira",
@@ -223,7 +223,7 @@ with st.sidebar:
     audio_txt = st.text_area("🎙️ Asignables a AUDIO:", value="\n".join(audio_defecto), height=160)
     hermanos_audio = [h.strip() for h in audio_txt.split("\n") if h.strip()]
 
-    # 3. ACOMODADORES (Ancianos, Siervos, Nuevos y Rodney Alfaro; Javier García y José Alberto González excluidos)
+    # 3. ACOMODADORES (Ancianos, Siervos y Nuevos; Excluidos: Javier García, José Alberto González y Dáshler Sánchez)
     ancianos_min_defecto = [
         "Carlos Enrique Pereira",
         "Elixander Alvarado",
@@ -233,7 +233,8 @@ with st.sidebar:
         "Julio Sánchez"
     ]
 
-    aco_defecto = sorted(list(set(ancianos_min_defecto + [h for h in hermanos_audio if h != "José Alberto González"] + ["Rodney Alfaro"])))
+    aco_excluidos = ["José Alberto González", "Dáshler Sánchez", "Javier García"]
+    aco_defecto = sorted(list(set([h for h in (ancianos_min_defecto + hermanos_audio + ["Rodney Alfaro"]) if h not in aco_excluidos])))
     aco_txt = st.text_area("🚪 Lista para ACOMODADORES:", value="\n".join(aco_defecto), height=160)
     hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
 
@@ -256,7 +257,7 @@ if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado"
     st.session_state.periodo_cargado = config_actual
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("📌 **Reglas Activas:** Dáshler Sánchez en Audio/Video/Mic, José Alberto González asignado únicamente a Audio, Javier García excluido de Acomodador y David Herrera excluido de los Domingos.")
+st.info("📌 **Reglas Activas:** Dáshler Sánchez en Audio/Video/Mic (excluido de Acomodador), José Alberto solo en Audio, Javier García excluido de Acomodador y David Herrera excluido de los Domingos.")
 
 datos_programa_final = []
 conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
@@ -301,7 +302,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
         else:
             resp_validos = [h for h in reun.get('responsables', []) if h in todos_hermanos]
             reun['responsables'] = st.multiselect(
-                "🙋‍♂️️ Ocupados con responsabilidades principales ese día:",
+                "🙋‍♂️ Ocupados con responsabilidades principales ese día:",
                 options=todos_hermanos,
                 default=resp_validos,
                 key=f"resp_{idx}"
@@ -386,9 +387,9 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 ultimo_tipo_dia_mic[h_mic] = tipo_dia_actual
 
             # 4. ASIGNAR ACOMODADOR
-            candidatos_aco = [h for h in hermanos_aco if h not in excluidos and h != "José Alberto González" and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
+            candidatos_aco = [h for h in hermanos_aco if h not in excluidos and h not in ["José Alberto González", "Dáshler Sánchez"] and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
             if not candidatos_aco:
-                candidatos_aco = [h for h in hermanos_aco if h not in excluidos and h != "José Alberto González"]
+                candidatos_aco = [h for h in hermanos_aco if h not in excluidos and h not in ["José Alberto González", "Dáshler Sánchez"]]
 
             candidatos_aco.sort(key=lambda h: score_candidato(h))
             h_aco = candidatos_aco[0] if candidatos_aco else ""
