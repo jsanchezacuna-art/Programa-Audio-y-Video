@@ -56,7 +56,7 @@ def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles
 
 # --- 1. BARRA LATERAL (CONFIGURACIÓN Y CLASIFICACIÓN) ---
 with st.sidebar:
-    st.header("⚙️ Configuración del Período")
+    st.header("⚙️️ Configuración del Período")
     congregacion = st.text_input("Nombre de la Congregación", "El Gallito")
     
     anio = st.number_input("Año", min_value=2024, max_value=2035, value=2026, step=1)
@@ -183,7 +183,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🔑 Clasificación de Grupos")
 
-    # 1. Hermanos autorizados para Video (se habilitó al grupo completo sin restricción)
     nuevos_defecto = [
         "Adiel Arias",
         "Fran Vega",
@@ -195,7 +194,8 @@ with st.sidebar:
         "José Alberto González"
     ]
 
-    video_locales_defecto = [
+    # 1. VIDEO (Se incluye a Dáshler Sánchez y a todos los autorizados; se excluye a José Alberto González)
+    video_locales_defecto = sorted(list(set([
         "José Pereira",
         "Carlos Josué Pereira",
         "Julio Sánchez",
@@ -205,20 +205,25 @@ with st.sidebar:
         "Dáshler Sánchez",
         "Rodney Alfaro",
         "Kenneth Solís",
-        "Josué López"
-    ] + nuevos_defecto
+        "Josué López",
+        "Adiel Arias",
+        "Fran Vega",
+        "Meysson Pérez",
+        "Yoiser Vargas",
+        "Jossy Quesada",
+        "Henry Altamirano",
+        "Evans Arguedas"
+    ])))
 
-    # Eliminar duplicados manteniendo orden
-    video_locales_defecto = sorted(list(set(video_locales_defecto)))
-
-    video_txt = st.text_area("🖥️ Diestros en VIDEO (Habilitados completos con rotación):", value="\n".join(video_locales_defecto), height=200)
+    video_txt = st.text_area("🖥️ Diestros en VIDEO:", value="\n".join(video_locales_defecto), height=200)
     hermanos_video = [h.strip() for h in video_txt.split("\n") if h.strip()]
 
-    # 2. Hermanos para Audio
-    audio_txt = st.text_area("🎙️ Asignables a AUDIO:", value="\n".join(nuevos_defecto), height=160)
+    # 2. AUDIO (Se incluye a Dáshler Sánchez y José Alberto González)
+    audio_defecto = sorted(list(set(nuevos_defecto + ["Dáshler Sánchez"])))
+    audio_txt = st.text_area("🎙️ Asignables a AUDIO:", value="\n".join(audio_defecto), height=160)
     hermanos_audio = [h.strip() for h in audio_txt.split("\n") if h.strip()]
 
-    # 3. Ancianos y Siervos Ministeriales (Acomodadores - Javier García excluido)
+    # 3. ACOMODADORES (Ancianos, Siervos, Nuevos y Rodney Alfaro; Javier García y José Alberto González excluidos)
     ancianos_min_defecto = [
         "Carlos Enrique Pereira",
         "Elixander Alvarado",
@@ -228,13 +233,14 @@ with st.sidebar:
         "Julio Sánchez"
     ]
 
-    aco_defecto = sorted(list(set(ancianos_min_defecto + hermanos_audio + ["Rodney Alfaro"])))
+    aco_defecto = sorted(list(set(ancianos_min_defecto + [h for h in hermanos_audio if h != "José Alberto González"] + ["Rodney Alfaro"])))
     aco_txt = st.text_area("🚪 Lista para ACOMODADORES:", value="\n".join(aco_defecto), height=160)
     hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
 
     todos_hermanos = sorted(list(set(hermanos_video + hermanos_audio + hermanos_aco + ["Iván Chavarría", "Carlos Blanco"])))
 
-    mic_defecto = [h for h in todos_hermanos if h != "Carlos Enrique Pereira"]
+    # 4. MICRÓFONOS (Excluidos Carlos Enrique Pereira y José Alberto González)
+    mic_defecto = [h for h in todos_hermanos if h not in ["Carlos Enrique Pereira", "José Alberto González"]]
     mic_txt = st.text_area("🎤 Autorizados para MICRÓFONOS:", value="\n".join(mic_defecto), height=140)
     hermanos_mic = [h.strip() for h in mic_txt.split("\n") if h.strip()]
 
@@ -250,7 +256,7 @@ if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado"
     st.session_state.periodo_cargado = config_actual
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("📌 **Reglas Activas:** Variación de parejas entre hermanos, Javier García excluido de Acomodador, rotación de todo el grupo en Video (máx. 2 por mes) y David Herrera excluido de los Domingos.")
+st.info("📌 **Reglas Activas:** Dáshler Sánchez en Audio/Video/Mic, José Alberto González asignado únicamente a Audio, Javier García excluido de Acomodador y David Herrera excluido de los Domingos.")
 
 datos_programa_final = []
 conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
@@ -279,7 +285,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
         with col_f3:
             st.write("")
             st.write("")
-            if st.button("🗑️️", key=f"del_{idx}"):
+            if st.button("🗑️", key=f"del_{idx}"):
                 indice_a_eliminar = idx
 
         if reun['sin_reunion']:
@@ -364,13 +370,13 @@ for idx, reun in enumerate(st.session_state.reuniones):
             registrar_asignacion(h_video, "Video")
 
             # 3. ASIGNAR MICRÓFONO
-            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h != "Carlos Enrique Pereira" and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
+            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h not in ["Carlos Enrique Pereira", "José Alberto González"] and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
             
             if not es_domingo:
                 candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
 
             if not candidatos_mic:
-                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h != "Carlos Enrique Pereira"]
+                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h not in ["Carlos Enrique Pereira", "José Alberto González"]]
 
             candidatos_mic.sort(key=lambda h: score_candidato(h, es_mic=True))
 
@@ -380,9 +386,9 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 ultimo_tipo_dia_mic[h_mic] = tipo_dia_actual
 
             # 4. ASIGNAR ACOMODADOR
-            candidatos_aco = [h for h in hermanos_aco if h not in excluidos and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
+            candidatos_aco = [h for h in hermanos_aco if h not in excluidos and h != "José Alberto González" and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
             if not candidatos_aco:
-                candidatos_aco = [h for h in hermanos_aco if h not in excluidos]
+                candidatos_aco = [h for h in hermanos_aco if h not in excluidos and h != "José Alberto González"]
 
             candidatos_aco.sort(key=lambda h: score_candidato(h))
             h_aco = candidatos_aco[0] if candidatos_aco else ""
