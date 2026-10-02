@@ -162,7 +162,7 @@ with st.sidebar:
                     try:
                         df_hist = pd.read_excel(io.BytesIO(contenido))
                     except Exception:
-                        st.warning("⚠️️ Para procesar archivos .xlsx, se recomienda instalar 'openpyxl'. O bien sube el archivo como CSV o HTML.")
+                        st.warning("⚠ Para procesar archivos .xlsx, se recomienda instalar 'openpyxl'. O bien sube el archivo como CSV o HTML.")
 
             if df_hist is not None:
                 for idx_row, row in df_hist.iterrows():
@@ -269,10 +269,24 @@ for idx, reun in enumerate(st.session_state.reuniones):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
         
         with col_f1:
-            reun['fecha'] = st.text_input("Fecha", value=reun['fecha'], key=f"fecha_{idx}")
+            nueva_fecha_str = st.text_input("Fecha", value=reun['fecha'], key=f"fecha_{idx}")
+            if nueva_fecha_str != reun['fecha']:
+                reun['fecha'] = nueva_fecha_str
+                # Sincronizar dt_obj automáticamente al cambiar la fecha por texto
+                try:
+                    dt_parsed = datetime.datetime.strptime(nueva_fecha_str, "%d/%m/%Y").date()
+                    reun['dt'] = dt_parsed
+                    # Actualizar automáticamente el día correspondiente a la nueva fecha
+                    reun['dia'] = DIAS_SEMANA[dt_parsed.weekday()]
+                except ValueError:
+                    pass
+
         with col_f2:
             idx_dia = DIAS_SEMANA.index(reun['dia']) if reun['dia'] in DIAS_SEMANA else 2
-            reun['dia'] = st.selectbox("Día de la reunión", DIAS_SEMANA, index=idx_dia, key=f"dia_{idx}")
+            nuevo_dia = st.selectbox("Día de la reunión", DIAS_SEMANA, index=idx_dia, key=f"dia_{idx}")
+            if nuevo_dia != reun['dia']:
+                reun['dia'] = nuevo_dia
+
         with col_f3:
             reun['sin_reunion'] = st.checkbox("🚫 CANCELAR SEMANA / ASAMBLEA", value=reun['sin_reunion'], key=f"sin_reunion_{idx}")
         with col_f4:
@@ -307,13 +321,13 @@ for idx, reun in enumerate(st.session_state.reuniones):
             if es_domingo:
                 excluidos.add("David Herrera")
 
+            # Garantizar que el objeto date esté correctamente parsed
             try:
                 dt_obj = datetime.datetime.strptime(reun['fecha'], "%d/%m/%Y").date()
-                clave_mes = dt_obj.strftime("%Y-%m")
             except Exception:
-                dt_obj = datetime.date(anio, 1, 1)
-                clave_mes = "actual"
+                dt_obj = reun.get('dt', datetime.date(anio, 1, 1))
 
+            clave_mes = dt_obj.strftime("%Y-%m")
             asignados_hoy = []
 
             def score_candidato(hermano, es_mic=False):
@@ -560,3 +574,8 @@ html_code = f"""
 st.markdown("---")
 st.subheader("👁️ Vista Previa Final")
 components.html(html_code, height=750, scrolling=True)
+```eof
+
+### Principal corrección implementada:
+- Se añadió sincronización bidireccional en el formulario: si cambias la fecha por texto (`DD/MM/YYYY`), **el sistema recalcula automáticamente el día de la semana (`reun['dia']`) y actualiza el objeto `dt` interno en `st.session_state`**.
+- Ahora los datos guardados en la sesión persistirán correctamente y no se revertirán al cargar los meses ni al renderizar la lista.
