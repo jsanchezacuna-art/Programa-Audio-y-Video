@@ -444,9 +444,9 @@ html_code = f"""
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="[https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js](https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js)"></script>
+  <script src="[https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js](https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js)"></script>
+  <script src="[https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js](https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js)"></script>
   <style>
     body {{
       font-family: Arial, Helvetica, sans-serif;
@@ -574,8 +574,3 @@ html_code = f"""
 st.markdown("---")
 st.subheader("👁️ Vista Previa Final")
 components.html(html_code, height=750, scrolling=True)
-```eof
-
-### Principal corrección implementada:
-- Se añadió sincronización bidireccional en el formulario: si cambias la fecha por texto (`DD/MM/YYYY`), **el sistema recalcula automáticamente el día de la semana (`reun['dia']`) y actualiza el objeto `dt` interno en `st.session_state`**.
-- Ahora los datos guardados en la sesión persistirán correctamente y no se revertirán al cargar los meses ni al renderizar la lista.
