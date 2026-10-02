@@ -64,8 +64,7 @@ with st.sidebar:
     
     col_m1, col_m2 = st.columns(2)
     with col_m1:
-        # Predeterminado en Octubre (índice 9)
-        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=9)
+        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=9) # Predeterminado en Octubre
     
     meses_seleccionados = [mes_1]
     if cant_meses == "2 Meses":
@@ -215,7 +214,7 @@ with st.sidebar:
     hermanos_audio = [h.strip() for h in audio_txt.split("\n") if h.strip()]
 
     # 3. Ancianos y Siervos Ministeriales (Acomodadores)
-    # Javier García fue removido de la lista de acomodadores por regla de nombramiento
+    # Javier García excluido por no estar nombrado
     ancianos_min_defecto = [
         "Carlos Enrique Pereira",
         "Elixander Alvarado",
@@ -238,7 +237,6 @@ with st.sidebar:
 # --- 2. INICIALIZACIÓN Y AUTO-SINCRONIZACIÓN DE SESIÓN ---
 config_actual = (anio, tuple(meses_seleccionados), dia_habitual_entre_semana)
 
-# Forzar recarga automática si cambia la configuración del período en la barra lateral
 if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado") != config_actual:
     st.session_state.reuniones = generar_fechas_meses(
         anio=anio,
@@ -262,28 +260,19 @@ indice_a_eliminar = None
 # --- 3. ALGORITMO DE ASIGNACIÓN CON VARIACIÓN DE PAREJAS ---
 for idx, reun in enumerate(st.session_state.reuniones):
     with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
-        col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
+        col_f1, col_f2, col_f3 = st.columns([3, 4, 1])
         
         with col_f1:
-            nueva_fecha_str = st.text_input("Fecha", value=reun['fecha'], key=f"fecha_input_{idx}")
-            if nueva_fecha_str != reun['fecha']:
-                reun['fecha'] = nueva_fecha_str
-                try:
-                    dt_parsed = datetime.datetime.strptime(nueva_fecha_str, "%d/%m/%Y").date()
-                    reun['dt'] = dt_parsed
-                    reun['dia'] = DIAS_SEMANA[dt_parsed.weekday()]
-                except ValueError:
-                    pass
-
-        with col_f2:
             idx_dia = DIAS_SEMANA.index(reun['dia']) if reun['dia'] in DIAS_SEMANA else 2
             nuevo_dia = st.selectbox("Día de la reunión", DIAS_SEMANA, index=idx_dia, key=f"dia_select_{idx}")
             if nuevo_dia != reun['dia']:
                 reun['dia'] = nuevo_dia
 
-        with col_f3:
+        with col_f2:
+            st.write("")
+            st.write("")
             reun['sin_reunion'] = st.checkbox("🚫 CANCELAR SEMANA / ASAMBLEA", value=reun['sin_reunion'], key=f"sin_reunion_{idx}")
-        with col_f4:
+        with col_f3:
             st.write("")
             st.write("")
             if st.button("🗑️", key=f"del_{idx}"):
@@ -315,11 +304,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
             if es_domingo:
                 excluidos.add("David Herrera")
 
-            try:
-                dt_obj = datetime.datetime.strptime(reun['fecha'], "%d/%m/%Y").date()
-            except Exception:
-                dt_obj = reun.get('dt', datetime.date(anio, 1, 1))
-
+            dt_obj = reun.get('dt', datetime.date(anio, 1, 1))
             clave_mes = dt_obj.strftime("%Y-%m")
             asignados_hoy = []
 
