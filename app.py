@@ -225,8 +225,7 @@ with st.sidebar:
         "Walter Sánchez",
         "Rafael Segura",
         "José Pereira",
-        "Julio Sánchez",
-        "Javier García"
+        "Julio Sánchez"
     ]
 
     aco_defecto = sorted(list(set(ancianos_min_defecto + hermanos_audio + ["Rodney Alfaro"])))
