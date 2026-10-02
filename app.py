@@ -183,7 +183,18 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🔑 Clasificación de Grupos")
 
-    # 1. Hermanos Locales con Llave y Experiencia (Video)
+    # 1. Hermanos autorizados para Video (se habilitó al grupo completo sin restricción)
+    nuevos_defecto = [
+        "Adiel Arias",
+        "Fran Vega",
+        "Meysson Pérez",
+        "Yoiser Vargas",
+        "Jossy Quesada",
+        "Henry Altamirano",
+        "Evans Arguedas",
+        "José Alberto González"
+    ]
+
     video_locales_defecto = [
         "José Pereira",
         "Carlos Josué Pereira",
@@ -195,26 +206,19 @@ with st.sidebar:
         "Rodney Alfaro",
         "Kenneth Solís",
         "Josué López"
-    ]
-    video_txt = st.text_area("🖥️ Diestros en VIDEO (Locales con experiencia y llave):", value="\n".join(video_locales_defecto), height=170)
+    ] + nuevos_defecto
+
+    # Eliminar duplicados manteniendo orden
+    video_locales_defecto = sorted(list(set(video_locales_defecto)))
+
+    video_txt = st.text_area("🖥️ Diestros en VIDEO (Habilitados completos con rotación):", value="\n".join(video_locales_defecto), height=200)
     hermanos_video = [h.strip() for h in video_txt.split("\n") if h.strip()]
 
-    # 2. Los Nuevos + José Alberto González (Audio)
-    nuevos_defecto = [
-        "Adiel Arias",
-        "Fran Vega",
-        "Meysson Pérez",
-        "Yoiser Vargas",
-        "Jossy Quesada",
-        "Henry Altamirano",
-        "Evans Arguedas",
-        "José Alberto González"
-    ]
-    audio_txt = st.text_area("🎙️ Asignables a AUDIO (Nuevos + José Alberto González):", value="\n".join(nuevos_defecto), height=160)
+    # 2. Hermanos para Audio
+    audio_txt = st.text_area("🎙️ Asignables a AUDIO:", value="\n".join(nuevos_defecto), height=160)
     hermanos_audio = [h.strip() for h in audio_txt.split("\n") if h.strip()]
 
-    # 3. Ancianos y Siervos Ministeriales (Acomodadores)
-    # Javier García excluido por no estar nombrado
+    # 3. Ancianos y Siervos Ministeriales (Acomodadores - Javier García excluido)
     ancianos_min_defecto = [
         "Carlos Enrique Pereira",
         "Elixander Alvarado",
@@ -246,7 +250,7 @@ if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado"
     st.session_state.periodo_cargado = config_actual
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("📌 **Reglas Activas:** Variación de parejas entre hermanos, Javier García excluido de Acomodador, Josué López incluido en Video/Mic, José Alberto solo en Audio/Mic/Acomodador y David Herrera excluido de los Domingos.")
+st.info("📌 **Reglas Activas:** Variación de parejas entre hermanos, Javier García excluido de Acomodador, rotación de todo el grupo en Video (máx. 2 por mes) y David Herrera excluido de los Domingos.")
 
 datos_programa_final = []
 conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
@@ -275,7 +279,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
         with col_f3:
             st.write("")
             st.write("")
-            if st.button("🗑️", key=f"del_{idx}"):
+            if st.button("🗑️️", key=f"del_{idx}"):
                 indice_a_eliminar = idx
 
         if reun['sin_reunion']:
@@ -291,7 +295,7 @@ for idx, reun in enumerate(st.session_state.reuniones):
         else:
             resp_validos = [h for h in reun.get('responsables', []) if h in todos_hermanos]
             reun['responsables'] = st.multiselect(
-                "🙋‍♂️ Ocupados con responsabilidades principales ese día:",
+                "🙋‍♂️️ Ocupados con responsabilidades principales ese día:",
                 options=todos_hermanos,
                 default=resp_validos,
                 key=f"resp_{idx}"
