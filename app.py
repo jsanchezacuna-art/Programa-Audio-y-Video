@@ -1,189 +1,356 @@
+import calendar
+import datetime as dt
+import html
+import io
+import uuid
+
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-import datetime
-import calendar
-import pandas as pd
-import io
 
-# Configuración de la página
+
 st.set_page_config(
     page_title="Programa de Audio, Video, Micrófono y Acomodador",
-    layout="wide"
+    layout="wide",
 )
+
+MESES = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
+NUMERO_MES = {nombre: numero for numero, nombre in enumerate(MESES, start=1)}
+DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+NUMERO_DIA = {nombre: numero for numero, nombre in enumerate(DIAS)}
+
+# Estas tres reglas nunca se relajan. Si no existe alguien elegible, el puesto queda sin asignar.
+DIAS_DESCANSO_MINIMO = 10
+MAX_ASIGNACIONES_MES = 2
+SIN_ASIGNAR = "⚠ SIN ASIGNAR"
+SIN_REUNION = "--- NO HAY REUNIÓN ---"
+PUESTOS = ["Audio", "Video", "Micrófono", "Acomodador"]
+
+
+def clave_reunion(fecha):
+    """Una clave estable: los widgets no se mezclan al borrar una reunión."""
+    return f"reunion-{fecha.isoformat()}-{uuid.uuid4().hex[:8]}"
+
+
+def crear_reunion(fecha):
+    return {
+        "id": clave_reunion(fecha),
+        "fecha": fecha,
+        "sin_reunion": False,
+        "responsables": [],
+    }
+
+
+def generar_reuniones(anio, meses, dia_entre_semana):
+    fechas = []
+    objetivo = NUMERO_DIA[dia_entre_semana]
+
+    for nombre_mes in meses:
+        mes = NUMERO_MES[nombre_mes]
+        ultimo_dia = calendar.monthrange(anio, mes)[1]
+
+        for dia in range(1, ultimo_dia + 1):
+            fecha = dt.date(anio, mes, dia)
+            if fecha.weekday() in (objetivo, NUMERO_DIA["Domingo"]):
+                fechas.append(fecha)
+
+    return [crear_reunion(fecha) for fecha in sorted(fechas)]
+
+
+def normalizar_nombre(valor):
+    nombre = str(valor).strip()
+    return nombre.replace("Zamora", "Chavarría")
+
+
+def es_nombre_asignable(valor):
+    texto = normalizar_nombre(valor)
+
+    return bool(
+        texto
+        and texto.lower() not in {
+            "nan",
+            "none",
+            "-- sin asignar --",
+            SIN_ASIGNAR.lower(),
+        }
+        and "NO HAY" not in texto.upper()
+    )
+
+
+def fecha_desde_valor(valor):
+    try:
+        fecha = pd.to_datetime(valor, dayfirst=True, errors="coerce")
+
+        if pd.isna(fecha):
+            return None
+
+        return fecha.date()
+
+    except (TypeError, ValueError):
+        return None
+
+
+def leer_historial(archivo):
+    """Lee conteos y última fecha por persona desde CSV, Excel o HTML."""
+    contenido = archivo.getvalue()
+    nombre = archivo.name.lower()
+    tabla = None
+    errores = []
+
+    lectores = []
+
+    if nombre.endswith((".xlsx", ".xls")):
+        lectores = [lambda: pd.read_excel(io.BytesIO(contenido))]
+    elif nombre.endswith(".csv"):
+        lectores = [lambda: pd.read_csv(io.BytesIO(contenido))]
+    elif nombre.endswith((".html", ".htm")):
+        lectores = [lambda: pd.read_html(io.BytesIO(contenido))[0]]
+
+    for lector in lectores:
+        try:
+            tabla = lector()
+            break
+        except Exception as exc:
+            errores.append(str(exc))
+
+    if tabla is None:
+        detalle = errores[-1] if errores else "Formato no compatible"
+        raise ValueError(f"No se pudo leer el archivo: {detalle}")
+
+    tabla.columns = [str(columna).strip() for columna in tabla.columns]
+
+    # Algunos HTML tienen los encabezados dentro de la tabla.
+    for indice, fila in tabla.iterrows():
+        valores = [str(valor).strip() for valor in fila.tolist()]
+
+        if "Audio" in valores and "Video" in valores:
+            tabla.columns = valores
+            tabla = tabla.iloc[indice + 1:].reset_index(drop=True)
+            break
+
+    columnas = {str(columna).strip().lower(): columna for columna in tabla.columns}
+    columna_fecha = columnas.get("fecha")
+
+    conteos = {}
+    ultimas_fechas = {}
+
+    for _, fila in tabla.iterrows():
+        fecha = fecha_desde_valor(fila[columna_fecha]) if columna_fecha else None
+
+        for puesto in PUESTOS:
+            columna = columnas.get(puesto.lower())
+
+            if columna is None:
+                continue
+
+            nombre_hermano = fila[columna]
+
+            if not es_nombre_asignable(nombre_hermano):
+                continue
+
+            hermano = normalizar_nombre(nombre_hermano)
+            conteos[hermano] = conteos.get(hermano, 0) + 1
+
+            if fecha and (
+                hermano not in ultimas_fechas
+                or fecha > ultimas_fechas[hermano]
+            ):
+                ultimas_fechas[hermano] = fecha
+
+    return conteos, ultimas_fechas
+
+
+def lista_desde_area(texto):
+    return sorted(
+        {
+            normalizar_nombre(linea)
+            for linea in texto.splitlines()
+            if normalizar_nombre(linea)
+        }
+    )
+
+
+def clave_mes(fecha):
+    return fecha.strftime("%Y-%m")
+
+
+def candidato_valido(
+    hermano,
+    fecha,
+    asignados_hoy,
+    conteos_mes,
+    ultimas_fechas,
+):
+    if hermano in asignados_hoy:
+        return False
+
+    if conteos_mes.get((hermano, clave_mes(fecha)), 0) >= MAX_ASIGNACIONES_MES:
+        return False
+
+    ultima = ultimas_fechas.get(hermano)
+
+    return ultima is None or (fecha - ultima).days >= DIAS_DESCANSO_MINIMO
+
+
+def escoger(
+    candidatos,
+    fecha,
+    asignados_hoy,
+    conteos_mes,
+    conteos_totales,
+    ultimas_fechas,
+    parejas_historial,
+    ultimo_tipo_mic=None,
+    tipo_dia=None,
+):
+    elegibles = [
+        hermano
+        for hermano in candidatos
+        if candidato_valido(
+            hermano,
+            fecha,
+            asignados_hoy,
+            conteos_mes,
+            ultimas_fechas,
+        )
+    ]
+
+    def puntaje(hermano):
+        repeticiones_pareja = sum(
+            tuple(sorted((hermano, otro))) in parejas_historial
+            for otro in asignados_hoy
+        )
+
+        misma_clase_mic = (
+            1
+            if ultimo_tipo_mic is not None
+            and ultimo_tipo_mic.get(hermano) == tipo_dia
+            else 0
+        )
+
+        return (
+            conteos_mes.get((hermano, clave_mes(fecha)), 0),
+            conteos_totales.get(hermano, 0),
+            repeticiones_pareja,
+            misma_clase_mic,
+            hermano.casefold(),
+        )
+
+    return min(elegibles, key=puntaje) if elegibles else None
+
+
+def registrar(
+    hermano,
+    fecha,
+    asignados_hoy,
+    conteos_mes,
+    conteos_totales,
+    ultimas_fechas,
+    parejas_historial,
+):
+    for otro in asignados_hoy:
+        parejas_historial.add(tuple(sorted((hermano, otro))))
+
+    asignados_hoy.add(hermano)
+    conteos_totales[hermano] = conteos_totales.get(hermano, 0) + 1
+    conteos_mes[(hermano, clave_mes(fecha))] = (
+        conteos_mes.get((hermano, clave_mes(fecha)), 0) + 1
+    )
+    ultimas_fechas[hermano] = fecha
+
 
 st.title("📋 Generador de Programa de Audio, Video, Micrófono y Acomodador")
 
-# --- DICCIONARIOS Y DÍAS ---
-MESES_LISTA = [
-    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
-]
-MESES_DICT = {nombre: i + 1 for i, nombre in enumerate(MESES_LISTA)}
-DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-DIAS_DESCANSO_MINIMO = 10  # Días mínimos entre asignaciones para un mismo hermano
-MAX_ASIGNACIONES_MES = 2   # Máximo absoluto por mes
-
-def generar_fechas_meses(anio, meses_seleccionados, dia_entre_semana="Miércoles"):
-    dias_map = {"Lunes": 0, "Martes": 1, "Miércoles": 2, "Jueves": 3, "Viernes": 4, "Sábado": 5, "Domingo": 6}
-    target_midweek = dias_map.get(dia_entre_semana, 2)
-    reuniones_generadas = []
-    
-    for mes_nombre in meses_seleccionados:
-        mes_num = MESES_DICT[mes_nombre]
-        num_dias = calendar.monthrange(anio, mes_num)[1]
-        
-        for dia in range(1, num_dias + 1):
-            dt = datetime.date(anio, mes_num, dia)
-            if dt.weekday() == target_midweek:
-                reuniones_generadas.append({
-                    "dt": dt,
-                    "fecha": dt.strftime("%d/%m/%Y"),
-                    "dia": dia_entre_semana,
-                    "sin_reunion": False,
-                    "responsables": []
-                })
-            elif dt.weekday() == 6:
-                reuniones_generadas.append({
-                    "dt": dt,
-                    "fecha": dt.strftime("%d/%m/%Y"),
-                    "dia": "Domingo",
-                    "sin_reunion": False,
-                    "responsables": []
-                })
-                
-    reuniones_generadas.sort(key=lambda x: x["dt"])
-    return reuniones_generadas
-
-# --- 1. BARRA LATERAL (CONFIGURACIÓN Y CLASIFICACIÓN) ---
 with st.sidebar:
-    st.header("⚙️ Configuración del Período")
-    congregacion = st.text_input("Nombre de la Congregación", "El Gallito")
-    
-    anio = st.number_input("Año", min_value=2024, max_value=2035, value=2026, step=1)
-    cant_meses = st.radio("Cantidad de Meses a programar:", ["1 Mes", "2 Meses"], index=0)
-    
-    col_m1, col_m2 = st.columns(2)
-    with col_m1:
-        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=9) # Predeterminado en Octubre
-    
-    meses_seleccionados = [mes_1]
-    if cant_meses == "2 Meses":
-        with col_m2:
-            idx_m2 = (MESES_LISTA.index(mes_1) + 1) % 12
-            mes_2 = st.selectbox("Mes 2", MESES_LISTA, index=idx_m2)
-        meses_seleccionados.append(mes_2)
-        periodo_str = f"{mes_1} y {mes_2} {anio}"
-    else:
-        periodo_str = f"{mes_1} {anio}"
-        
-    st.markdown(f"**Período activo:** `{periodo_str}`")
-    
-    dia_habitual_entre_semana = st.selectbox(
-        "Día habitual entre semana:",
-        ["Miércoles", "Martes", "Jueves", "Lunes"],
-        index=0
+    st.header("⚙️ Configuración del período")
+
+    congregacion = st.text_input(
+        "Nombre de la congregación",
+        "El Gallito",
     )
-    
-    st.markdown("---")
-    if st.button("🔄 Cargar Fechas del Período"):
-        st.session_state.reuniones = generar_fechas_meses(
-            anio=anio,
-            meses_seleccionados=meses_seleccionados,
-            dia_entre_semana=dia_habitual_entre_semana
+
+    anio = st.number_input(
+        "Año",
+        min_value=2024,
+        max_value=2035,
+        value=2026,
+        step=1,
+    )
+
+    cantidad_meses = st.radio(
+        "Cantidad de meses",
+        ["1 Mes", "2 Meses"],
+        horizontal=True,
+    )
+
+    mes_1 = st.selectbox("Mes 1", MESES, index=9)
+    meses = [mes_1]
+
+    if cantidad_meses == "2 Meses":
+        opciones_mes_2 = [mes for mes in MESES if mes != mes_1]
+        predeterminado = MESES[(MESES.index(mes_1) + 1) % 12]
+
+        mes_2 = st.selectbox(
+            "Mes 2",
+            opciones_mes_2,
+            index=opciones_mes_2.index(predeterminado),
         )
-        st.session_state.periodo_cargado = (anio, tuple(meses_seleccionados), dia_habitual_entre_semana)
-        st.success("¡Fechas cargadas correctamente!")
+
+        meses.append(mes_2)
+
+    dia_semana = st.selectbox(
+        "Día habitual entre semana",
+        ["Miércoles", "Martes", "Jueves", "Lunes"],
+    )
+
+    periodo = (
+        f"{meses[0]} {anio}"
+        if len(meses) == 1
+        else f"{meses[0]} y {meses[1]} {anio}"
+    )
+
+    st.caption(f"Período activo: {periodo}")
+
+    configuracion = (int(anio), tuple(meses), dia_semana)
+
+    if st.button(
+        "🔄 Cargar fechas del período",
+        use_container_width=True,
+    ):
+        st.session_state.reuniones = generar_reuniones(*configuracion)
+        st.session_state.configuracion_reuniones = configuracion
         st.rerun()
 
-    # --- HISTORIAL PRECARGADO DE SEPTIEMBRE ---
-    st.markdown("---")
-    st.subheader("📂 Historial del Mes Anterior")
-    
-    historial_base_septiembre = {
-        "José Pereira": 2, "Javier García": 2, "Sebastián Montero": 2,
-        "Kenneth Solís": 2, "Carlos Josué Pereira": 2, "Julio Sánchez": 2,
-        "David Herrera": 1, "José Alberto González": 1, "Dáshler Sánchez": 2,
-        "Elixander Alvarado": 2, "Rafael Segura": 1, "Carlos Enrique Pereira": 1,
-        "Walter Sánchez": 1, "Rodney Alfaro": 1, "Josué López": 1,
-        "Iván Chavarría": 1, "Carlos Blanco": 1, "Adiel Arias": 2,
-        "Fran Vega": 2, "Meysson Pérez": 2, "Evans Arguedas": 2,
-        "Jossy Quesada": 2, "Henry Altamirano": 2, "Yoiser Vargas": 1
-    }
-
-    fechas_base_septiembre = {
-        "Jossy Quesada": datetime.date(2026, 9, 30),
-        "Rodney Alfaro": datetime.date(2026, 9, 30),
-        "Carlos Josué Pereira": datetime.date(2026, 9, 30),
-        "Javier García": datetime.date(2026, 9, 30),
-        "Meysson Pérez": datetime.date(2026, 9, 27),
-        "Josué López": datetime.date(2026, 9, 27),
-        "Henry Altamirano": datetime.date(2026, 9, 27),
-        "Julio Sánchez": datetime.date(2026, 9, 27),
-        "Adiel Arias": datetime.date(2026, 9, 23),
-        "Kenneth Solís": datetime.date(2026, 9, 23),
-        "Elixander Alvarado": datetime.date(2026, 9, 23),
-        "Fran Vega": datetime.date(2026, 9, 23)
-    }
+    st.divider()
+    st.subheader("📂 Historial")
 
     archivo_historial = st.file_uploader(
-        "Sube un archivo adicional de historial (opcional Excel/CSV/HTML):",
-        type=["xlsx", "xls", "csv", "html"]
+        "Archivo anterior (Excel, CSV o HTML)",
+        type=["xlsx", "xls", "csv", "html", "htm"],
     )
-    
-    conteo_historial = historial_base_septiembre.copy()
-    
+
+    conteos_historial = {}
+    fechas_historial = {}
+
     if archivo_historial is not None:
         try:
-            contenido = archivo_historial.read()
-            df_hist = None
+            conteos_historial, fechas_historial = leer_historial(
+                archivo_historial
+            )
+            st.success(
+                f"Historial leído: {len(conteos_historial)} personas."
+            )
 
-            try:
-                dfs = pd.read_html(io.BytesIO(contenido))
-                if dfs:
-                    df_hist = dfs[0]
-            except Exception:
-                pass
+        except ValueError as error:
+            st.error(str(error))
 
-            if df_hist is None:
-                try:
-                    df_hist = pd.read_csv(io.BytesIO(contenido))
-                except Exception:
-                    pass
+    st.divider()
+    st.subheader("🔑 Personas autorizadas")
 
-            if df_hist is None:
-                try:
-                    df_hist = pd.read_excel(io.BytesIO(contenido), engine='openpyxl')
-                except Exception:
-                    try:
-                        df_hist = pd.read_excel(io.BytesIO(contenido))
-                    except Exception:
-                        st.warning("⚠ Para procesar archivos .xlsx, se recomienda instalar 'openpyxl'. O bien sube el archivo como CSV o HTML.")
-
-            if df_hist is not None:
-                for idx_row, row in df_hist.iterrows():
-                    row_str = row.astype(str).tolist()
-                    if any("Audio" in cell for cell in row_str) and any("Video" in cell for cell in row_str):
-                        df_hist.columns = df_hist.iloc[idx_row]
-                        df_hist = df_hist.iloc[idx_row + 1:].reset_index(drop=True)
-                        break
-                    
-                for col in ["Audio", "Video", "Micrófono", "Acomodador"]:
-                    if col in df_hist.columns:
-                        for nombre in df_hist[col].dropna():
-                            nom_str = str(nombre).strip()
-                            if "Zamora" in nom_str:
-                                nom_str = nom_str.replace("Zamora", "Chavarría")
-                            if nom_str and "NO HAY" not in nom_str and nom_str != "-- Sin asignar --":
-                                conteo_historial[nom_str] = conteo_historial.get(nom_str, 0) + 1
-                st.success("¡Archivo de historial cargado!")
-        except Exception as e:
-            st.error(f"Error al procesar el archivo: {e}")
-
-    # --- CLASIFICACIÓN DE HERMANOS ---
-    st.markdown("---")
-    st.subheader("🔑 Clasificación de Grupos")
-
-    nuevos_defecto = [
+    nuevos = [
         "Adiel Arias",
         "Fran Vega",
         "Meysson Pérez",
@@ -191,374 +358,465 @@ with st.sidebar:
         "Jossy Quesada",
         "Henry Altamirano",
         "Evans Arguedas",
-        "José Alberto González"
+        "José Alberto González",
     ]
 
-    # 1. VIDEO (Se incluye a Dáshler Sánchez y a todos los autorizados; excluido José Alberto González)
-    video_locales_defecto = sorted(list(set([
-        "José Pereira",
-        "Carlos Josué Pereira",
-        "Julio Sánchez",
-        "Javier García",
-        "Sebastián Montero",
-        "David Herrera",
-        "Dáshler Sánchez",
-        "Rodney Alfaro",
-        "Kenneth Solís",
-        "Josué López",
-        "Adiel Arias",
-        "Fran Vega",
-        "Meysson Pérez",
-        "Yoiser Vargas",
-        "Jossy Quesada",
-        "Henry Altamirano",
-        "Evans Arguedas"
-    ])))
-
-    video_txt = st.text_area("🖥️ Diestros en VIDEO:", value="\n".join(video_locales_defecto), height=200)
-    hermanos_video = [h.strip() for h in video_txt.split("\n") if h.strip()]
-
-    # 2. AUDIO (Se incluye a Dáshler Sánchez y José Alberto González)
-    audio_defecto = sorted(list(set(nuevos_defecto + ["Dáshler Sánchez"])))
-    audio_txt = st.text_area("🎙️ Asignables a AUDIO:", value="\n".join(audio_defecto), height=160)
-    hermanos_audio = [h.strip() for h in audio_txt.split("\n") if h.strip()]
-
-    # 3. ACOMODADORES (Ancianos, Siervos y Nuevos; Excluidos: Javier García, José Alberto González y Dáshler Sánchez)
-    ancianos_min_defecto = [
-        "Carlos Enrique Pereira",
-        "Elixander Alvarado",
-        "Walter Sánchez",
-        "Rafael Segura",
-        "José Pereira",
-        "Julio Sánchez"
-    ]
-
-    aco_excluidos = ["José Alberto González", "Dáshler Sánchez", "Javier García"]
-    aco_defecto = sorted(list(set([h for h in (ancianos_min_defecto + hermanos_audio + ["Rodney Alfaro"]) if h not in aco_excluidos])))
-    aco_txt = st.text_area("🚪 Lista para ACOMODADORES:", value="\n".join(aco_defecto), height=160)
-    hermanos_aco = [h.strip() for h in aco_txt.split("\n") if h.strip()]
-
-    todos_hermanos = sorted(list(set(hermanos_video + hermanos_audio + hermanos_aco + ["Iván Chavarría", "Carlos Blanco"])))
-
-    # 4. MICRÓFONOS (Excluidos Carlos Enrique Pereira y José Alberto González)
-    mic_defecto = [h for h in todos_hermanos if h not in ["Carlos Enrique Pereira", "José Alberto González"]]
-    mic_txt = st.text_area("🎤 Autorizados para MICRÓFONOS:", value="\n".join(mic_defecto), height=140)
-    hermanos_mic = [h.strip() for h in mic_txt.split("\n") if h.strip()]
-
-# --- 2. INICIALIZACIÓN Y AUTO-SINCRONIZACIÓN DE SESIÓN ---
-config_actual = (anio, tuple(meses_seleccionados), dia_habitual_entre_semana)
-
-if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado") != config_actual:
-    st.session_state.reuniones = generar_fechas_meses(
-        anio=anio,
-        meses_seleccionados=meses_seleccionados,
-        dia_entre_semana=dia_habitual_entre_semana
+    video_defecto = sorted(
+        {
+            "José Pereira",
+            "Carlos Josué Pereira",
+            "Julio Sánchez",
+            "Javier García",
+            "Sebastián Montero",
+            "David Herrera",
+            "Dáshler Sánchez",
+            "Rodney Alfaro",
+            "Kenneth Solís",
+            "Josué López",
+            "Adiel Arias",
+            "Fran Vega",
+            "Meysson Pérez",
+            "Yoiser Vargas",
+            "Jossy Quesada",
+            "Henry Altamirano",
+            "Evans Arguedas",
+        }
     )
-    st.session_state.periodo_cargado = config_actual
 
-st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("📌 **Reglas Activas:** Dáshler Sánchez en Audio/Video/Mic (excluido de Acomodador), José Alberto solo en Audio, Javier García excluido de Acomodador y David Herrera excluido de los Domingos.")
+    audio_defecto = sorted(set(nuevos + ["Dáshler Sánchez"]))
 
-datos_programa_final = []
-conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
-ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
-ultima_fecha_asignado = {h: fechas_base_septiembre.get(h, None) for h in todos_hermanos}
-conteo_mes_actual = {}
-parejas_historial = set()
+    acomodador_defecto = sorted(
+        {
+            "Carlos Enrique Pereira",
+            "Elixander Alvarado",
+            "Walter Sánchez",
+            "Rafael Segura",
+            "José Pereira",
+            "Julio Sánchez",
+            "Rodney Alfaro",
+            "Adiel Arias",
+            "Fran Vega",
+            "Meysson Pérez",
+            "Yoiser Vargas",
+            "Jossy Quesada",
+            "Henry Altamirano",
+            "Evans Arguedas",
+        }
+    )
 
-indice_a_eliminar = None
+    video = lista_desde_area(
+        st.text_area(
+            "🖥️ Video",
+            "\n".join(video_defecto),
+            height=180,
+        )
+    )
 
-# --- 3. ALGORITMO DE ASIGNACIÓN CON VARIACIÓN DE PAREJAS ---
-for idx, reun in enumerate(st.session_state.reuniones):
-    with st.expander(f"📅 #{idx+1} — {reun['fecha']} ({reun['dia']})", expanded=True):
-        col_f1, col_f2, col_f3 = st.columns([3, 4, 1])
-        
-        with col_f1:
-            idx_dia = DIAS_SEMANA.index(reun['dia']) if reun['dia'] in DIAS_SEMANA else 2
-            nuevo_dia = st.selectbox("Día de la reunión", DIAS_SEMANA, index=idx_dia, key=f"dia_select_{idx}")
-            if nuevo_dia != reun['dia']:
-                reun['dia'] = nuevo_dia
+    audio = lista_desde_area(
+        st.text_area(
+            "🎙️ Audio",
+            "\n".join(audio_defecto),
+            height=145,
+        )
+    )
 
-        with col_f2:
-            st.write("")
-            st.write("")
-            reun['sin_reunion'] = st.checkbox("🚫 CANCELAR SEMANA / ASAMBLEA", value=reun['sin_reunion'], key=f"sin_reunion_{idx}")
-        with col_f3:
-            st.write("")
-            st.write("")
-            if st.button("🗑️", key=f"del_{idx}"):
-                indice_a_eliminar = idx
+    acomodador = lista_desde_area(
+        st.text_area(
+            "🚪 Acomodador",
+            "\n".join(acomodador_defecto),
+            height=170,
+        )
+    )
 
-        if reun['sin_reunion']:
-            st.warning("⚠️ Reunión cancelada / Semana de Asamblea.")
-            datos_programa_final.append({
-                "Fecha": reun['fecha'],
-                "Día": reun['dia'],
-                "Audio": "--- NO HAY REUNIÓN ---",
-                "Video": "--- NO HAY REUNIÓN ---",
-                "Micrófono": "--- NO HAY REUNIÓN ---",
-                "Acomodador": "--- NO HAY REUNIÓN ---"
-            })
-        else:
-            resp_validos = [h for h in reun.get('responsables', []) if h in todos_hermanos]
-            reun['responsables'] = st.multiselect(
-                "🙋‍♂️ Ocupados con responsabilidades principales ese día:",
-                options=todos_hermanos,
-                default=resp_validos,
-                key=f"resp_{idx}"
+    todos = sorted(
+        set(
+            video
+            + audio
+            + acomodador
+            + ["Iván Chavarría", "Carlos Blanco"]
+        )
+    )
+
+    microfono_defecto = [
+        hermano
+        for hermano in todos
+        if hermano not in {
+            "Carlos Enrique Pereira",
+            "José Alberto González",
+        }
+    ]
+
+    microfono = lista_desde_area(
+        st.text_area(
+            "🎤 Micrófono",
+            "\n".join(microfono_defecto),
+            height=160,
+        )
+    )
+
+if (
+    "reuniones" not in st.session_state
+    or st.session_state.get("configuracion_reuniones") != configuracion
+):
+    st.session_state.reuniones = generar_reuniones(*configuracion)
+    st.session_state.configuracion_reuniones = configuracion
+
+st.subheader(f"🗓️ Reuniones y responsables — {periodo}")
+
+st.info(
+    f"Reglas strictly: autorización por puesto, una asignación por reunión, "
+    f"{DIAS_DESCANSO_MINIMO} días de descanso y máximo "
+    f"{MAX_ASIGNACIONES_MES} asignaciones mensuales. "
+    "Si no hay candidato válido, se mostrará SIN ASIGNAR."
+)
+
+for reunion in st.session_state.reuniones:
+    identificador = reunion["id"]
+    fecha = reunion["fecha"]
+
+    with st.expander(
+        f"📅 {fecha.strftime('%d/%m/%Y')} ({DIAS[fecha.weekday()]})",
+        expanded=True,
+    ):
+        columna_fecha, columna_cancelar, columna_borrar = st.columns([3, 3, 1])
+
+        with columna_fecha:
+            nueva_fecha = st.date_input(
+                "Fecha de la reunión",
+                value=fecha,
+                key=f"fecha-{identificador}",
             )
-            
-            excluidos = set(reun['responsables'])
-            es_domingo = (reun['dia'] == "Domingo")
-            tipo_dia_actual = "Domingo" if es_domingo else "EntreSemana"
-            
-            if es_domingo:
-                excluidos.add("David Herrera")
+            reunion["fecha"] = nueva_fecha
 
-            dt_obj = reun.get('dt', datetime.date(anio, 1, 1))
-            clave_mes = dt_obj.strftime("%Y-%m")
-            asignados_hoy = []
+        with columna_cancelar:
+            reunion["sin_reunion"] = st.checkbox(
+                "🚫 Cancelar reunión / asamblea",
+                value=reunion["sin_reunion"],
+                key=f"cancelar-{identificador}",
+            )
 
-            def score_candidato(hermano, es_mic=False):
-                dias_desde_ultimo = 999
-                if ultima_fecha_asignado.get(hermano) is not None:
-                    dias_desde_ultimo = (dt_obj - ultima_fecha_asignado[hermano]).days
-                
-                penalizacion_descanso = 5000 if dias_desde_ultimo < DIAS_DESCANSO_MINIMO else 0
-                conteo_mes = conteo_mes_actual.get((hermano, clave_mes), 0)
-                conteo_gen = conteo_acumulado.get(hermano, 0)
-                
-                penalizacion_mes = conteo_mes * 1000
-                
-                repeticion_dia = 0
-                if es_mic and ultimo_tipo_dia_mic.get(hermano) == tipo_dia_actual:
-                    repeticion_dia = 10
+        with columna_borrar:
+            st.write("")
 
-                penalizacion_pareja = 0
-                for otro in asignados_hoy:
-                    par = tuple(sorted([hermano, otro]))
-                    if par in parejas_historial:
-                        penalizacion_pareja += 800
-                    
-                return (penalizacion_mes + penalizacion_descanso + penalizacion_pareja + repeticion_dia, conteo_mes, conteo_gen)
+            if st.button(
+                "🗑️",
+                key=f"borrar-{identificador}",
+                help="Quitar esta reunión",
+            ):
+                st.session_state.reuniones = [
+                    item
+                    for item in st.session_state.reuniones
+                    if item["id"] != identificador
+                ]
+                st.rerun()
 
-            def registrar_asignacion(hermano, puesto):
-                if hermano:
-                    excluidos.add(hermano)
-                    for otro in asignados_hoy:
-                        parejas_historial.add(tuple(sorted([hermano, otro])))
-                    asignados_hoy.append(hermano)
-                    conteo_acumulado[hermano] = conteo_acumulado.get(hermano, 0) + 1
-                    conteo_mes_actual[(hermano, clave_mes)] = conteo_mes_actual.get((hermano, clave_mes), 0) + 1
-                    ultima_fecha_asignado[hermano] = dt_obj
+        reunion["responsables"] = st.multiselect(
+            "🙋‍♂️ Ocupados con responsabilidades principales",
+            todos,
+            default=[
+                hermano
+                for hermano in reunion["responsables"]
+                if hermano in todos
+            ],
+            key=f"ocupados-{identificador}",
+        )
 
-            # 1. ASIGNAR AUDIO
-            cand_audio = [h for h in hermanos_audio if h not in excluidos and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
-            if not cand_audio:
-                cand_audio = [h for h in todos_hermanos if h not in excluidos and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
-                
-            cand_audio.sort(key=lambda h: score_candidato(h))
-            h_audio = cand_audio[0] if cand_audio else ""
-            registrar_asignacion(h_audio, "Audio")
+# El cálculo empieza desde cero en cada ejecución.
+conteos_totales = dict(conteos_historial)
+ultimas_fechas = dict(fechas_historial)
+conteos_mes = {}
+parejas_historial = set()
+ultimo_tipo_mic = {hermano: None for hermano in microfono}
+filas = []
 
-            # 2. ASIGNAR VIDEO
-            cand_video = [h for h in hermanos_video if h not in excluidos and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
-            if not cand_video:
-                cand_video = [h for h in hermanos_video if h not in excluidos]
-                
-            cand_video.sort(key=lambda h: score_candidato(h))
-            h_video = cand_video[0] if cand_video else ""
-            registrar_asignacion(h_video, "Video")
+for reunion in sorted(
+    st.session_state.reuniones,
+    key=lambda item: item["fecha"],
+):
+    fecha = reunion["fecha"]
+    dia = DIAS[fecha.weekday()]
 
-            # 3. ASIGNAR MICRÓFONO
-            candidatos_mic = [h for h in hermanos_mic if h not in excluidos and h not in ["Carlos Enrique Pereira", "José Alberto González"] and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
-            
-            if not es_domingo:
-                candidatos_mic = [h for h in candidatos_mic if h not in ["Carlos Blanco", "Walter Sánchez"]]
+    if reunion["sin_reunion"]:
+        filas.append(
+            {
+                "Fecha": fecha.strftime("%d/%m/%Y"),
+                "Día": dia,
+                **{puesto: SIN_REUNION for puesto in PUESTOS},
+            }
+        )
+        continue
 
-            if not candidatos_mic:
-                candidatos_mic = [h for h in todos_hermanos if h not in excluidos and h not in ["Carlos Enrique Pereira", "José Alberto González"]]
+    excluidos = set(reunion["responsables"])
 
-            candidatos_mic.sort(key=lambda h: score_candidato(h, es_mic=True))
+    # David Herrera no se programa los domingos.
+    if dia == "Domingo":
+        excluidos.add("David Herrera")
 
-            h_mic = candidatos_mic[0] if candidatos_mic else ""
-            if h_mic:
-                registrar_asignacion(h_mic, "Micrófono")
-                ultimo_tipo_dia_mic[h_mic] = tipo_dia_actual
+    asignados = set(excluidos)
+    resultado = {}
+    tipo_dia = "Domingo" if dia == "Domingo" else "Entre semana"
 
-            # 4. ASIGNAR ACOMODADOR
-            candidatos_aco = [h for h in hermanos_aco if h not in excluidos and h not in ["José Alberto González", "Dáshler Sánchez"] and conteo_mes_actual.get((h, clave_mes), 0) < MAX_ASIGNACIONES_MES]
-            if not candidatos_aco:
-                candidatos_aco = [h for h in hermanos_aco if h not in excluidos and h not in ["José Alberto González", "Dáshler Sánchez"]]
+    reglas = [
+        ("Audio", audio),
+        ("Video", video),
+        (
+            "Micrófono",
+            [
+                hermano
+                for hermano in microfono
+                if not (
+                    dia != "Domingo"
+                    and hermano in {"Carlos Blanco", "Walter Sánchez"}
+                )
+            ],
+        ),
+        ("Acomodador", acomodador),
+    ]
 
-            candidatos_aco.sort(key=lambda h: score_candidato(h))
-            h_aco = candidatos_aco[0] if candidatos_aco else ""
-            registrar_asignacion(h_aco, "Acomodador")
+    for puesto, autorizados in reglas:
+        candidatos = [
+            hermano
+            for hermano in autorizados
+            if hermano not in excluidos
+        ]
 
-            st.caption(f"🤖 **Asignación:** Audio: *{h_audio}* | Video: *{h_video}* | Mic: *{h_mic}* | Acomodador: *{h_aco}*")
+        hermano = escoger(
+            candidatos,
+            fecha,
+            asignados,
+            conteos_mes,
+            conteos_totales,
+            ultimas_fechas,
+            parejas_historial,
+            ultimo_tipo_mic if puesto == "Micrófono" else None,
+            tipo_dia,
+        )
 
-            datos_programa_final.append({
-                "Fecha": reun['fecha'],
-                "Día": reun['dia'],
-                "Audio": h_audio,
-                "Video": h_video,
-                "Micrófono": h_mic,
-                "Acomodador": h_aco
-            })
+        if hermano is None:
+            resultado[puesto] = SIN_ASIGNAR
 
-if indice_a_eliminar is not None:
-    st.session_state.reuniones.pop(indice_a_eliminar)
-    st.rerun()
+        else:
+            resultado[puesto] = hermano
 
-# --- 4. VISTA PREVIA Y DESCARGAS ---
-filas_html = ""
-for item in datos_programa_final:
-    is_no_reunion = (item['Audio'] == "--- NO HAY REUNIÓN ---")
-    clase_td = ' class="no-hay-reunion"' if is_no_reunion else ''
-    
-    filas_html += f"""
-    <tr>
-        <td>{item['Fecha']}</td>
-        <td>{item['Día']}</td>
-        <td{clase_td}>{item['Audio']}</td>
-        <td{clase_td}>{item['Video']}</td>
-        <td{clase_td}>{item['Micrófono']}</td>
-        <td{clase_td}>{item['Acomodador']}</td>
-    </tr>
-    """
+            registrar(
+                hermano,
+                fecha,
+                asignados,
+                conteos_mes,
+                conteos_totales,
+                ultimas_fechas,
+                parejas_historial,
+            )
 
-html_code = f"""
-<!DOCTYPE html>
-<html lang="es">
+            if puesto == "Micrófono":
+                ultimo_tipo_mic[hermano] = tipo_dia
+
+    filas.append(
+        {
+            "Fecha": fecha.strftime("%d/%m/%Y"),
+            "Día": dia,
+            **resultado,
+        }
+    )
+
+pendientes = [
+    fila
+    for fila in filas
+    if SIN_ASIGNAR in fila.values()
+]
+
+if pendientes:
+    st.warning(
+        f"Hay {len(pendientes)} reunión(es) con puestos sin asignar. "
+        "Revisa disponibilidades o las reglas."
+    )
+
+datos = pd.DataFrame(
+    filas,
+    columns=["Fecha", "Día", *PUESTOS],
+)
+
+st.subheader("👁️ Vista previa final")
+st.dataframe(datos, use_container_width=True, hide_index=True)
+
+filas_html = "".join(
+    "<tr>"
+    + "".join(
+        f"<td>{html.escape(str(fila[columna]))}</td>"
+        for columna in datos.columns
+    )
+    + "</tr>"
+    for fila in filas
+)
+
+encabezados_html = "".join(
+    f"<th>{html.escape(columna)}</th>"
+    for columna in datos.columns
+)
+
+nombre_seguro = html.escape(congregacion)
+periodo_seguro = html.escape(periodo)
+
+html_programa = f"""
+<!doctype html>
+<html lang='es'>
 <head>
-  <meta charset="UTF-8">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <style>
-    body {{
-      font-family: Arial, Helvetica, sans-serif;
-      background-color: #f4f6f9;
-      margin: 0;
-      padding: 10px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }}
-    .panel-descargas {{
-      margin-bottom: 20px;
-      display: flex;
-      gap: 15px;
-      flex-wrap: wrap;
-      justify-content: center;
-    }}
-    .btn-descarga {{
-      padding: 10px 18px;
-      font-size: 14px;
-      font-weight: bold;
-      color: #ffffff;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-    }}
-    .btn-imagen {{ background-color: #2b5876; }}
-    .btn-pdf {{ background-color: #d9534f; }}
-    .btn-excel {{ background-color: #1e7e34; }}
-    #contenedor-programa {{
-      width: 100%;
-      max-width: 1000px;
-      background-color: #ffffff;
-      border: 1px solid #d0d7de;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-      padding: 0 0 20px 0;
-    }}
-    .header-banner {{
-      background-color: #224b7a;
-      color: #ffffff;
-      text-align: center;
-      padding: 25px 15px;
-    }}
-    .header-banner h1 {{
-      margin: 0 0 8px 0;
-      font-size: 20px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }}
-    .header-banner p {{ margin: 0; font-size: 14px; opacity: 0.9; }}
-    .tabla-contenedor {{ padding: 15px; overflow-x: auto; }}
-    table {{ width: 100%; border-collapse: collapse; font-size: 13px; color: #333333; }}
-    th {{ background-color: #34495e; color: #ffffff; padding: 10px 6px; text-align: center; border: 1px solid #34495e; }}
-    td {{ padding: 9px 6px; text-align: center; border: 1px solid #e1e8ed; }}
-    tr:nth-child(even) {{ background-color: #f8fafc; }}
-    .no-hay-reunion {{ font-weight: bold; color: #555555; letter-spacing: 1px; }}
-  </style>
+<meta charset='utf-8'>
+
+<script src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'></script>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'></script>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'></script>
+
+<style>
+body {{
+    font-family: Arial, sans-serif;
+    background: #f4f6f9;
+    margin: 0;
+    padding: 12px;
+    text-align: center;
+}}
+
+button {{
+    border: 0;
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    font-weight: bold;
+    margin: 0 5px 16px;
+    padding: 10px 16px;
+}}
+
+#png {{ background: #2b5876; }}
+#pdf {{ background: #c9403b; }}
+#excel {{ background: #18733a; }}
+
+#programa {{
+    background: #fff;
+    border: 1px solid #d0d7de;
+    box-shadow: 0 4px 12px #0002;
+    margin: auto;
+    max-width: 1000px;
+}}
+
+header {{
+    background: #224b7a;
+    color: #fff;
+    padding: 24px 12px;
+}}
+
+h1 {{
+    font-size: 20px;
+    letter-spacing: .7px;
+    margin: 0 0 8px;
+}}
+
+p {{
+    margin: 0;
+}}
+
+.tabla {{
+    overflow-x: auto;
+    padding: 15px;
+}}
+
+table {{
+    border-collapse: collapse;
+    width: 100%;
+}}
+
+th {{
+    background: #34495e;
+    color: #fff;
+}}
+
+th, td {{
+    border: 1px solid #e1e8ed;
+    font-size: 13px;
+    padding: 9px 6px;
+    text-align: center;
+}}
+
+tr:nth-child(even) {{
+    background: #f8fafc;
+}}
+</style>
 </head>
+
 <body>
-  <div class="panel-descargas">
-    <button class="btn-descarga btn-imagen" onclick="descargarImagen()">📷 Descargar Imagen (PNG)</button>
-    <button class="btn-descarga btn-pdf" onclick="descargarPDF()">📄 Descargar PDF</button>
-    <button class="btn-descarga btn-excel" onclick="descargarExcel()">📊 Descargar Excel</button>
-  </div>
+<button id='png' onclick='imagen()'>📷 Descargar PNG</button>
+<button id='pdf' onclick='pdf()'>📄 Descargar PDF</button>
+<button id='excel' onclick='excel()'>📊 Descargar Excel</button>
 
-  <div id="contenedor-programa">
-    <div class="header-banner">
-      <h1>PROGRAMA DE AUDIO, VIDEO, MICRÓFONO Y ACOMODADOR</h1>
-      <p>Congregación {congregacion} | {periodo_str}</p>
-    </div>
-    <div class="tabla-contenedor">
-      <table>
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Día</th>
-            <th>Audio</th>
-            <th>Video</th>
-            <th>Micrófono</th>
-            <th>Acomodador</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filas_html}
-        </tbody>
-      </table>
-    </div>
-  </div>
+<main id='programa'>
+    <header>
+        <h1>PROGRAMA DE AUDIO, VIDEO, MICRÓFONO Y ACOMODADOR</h1>
+        <p>Congregación {nombre_seguro} | {periodo_seguro}</p>
+    </header>
 
-  <script>
-    async function descargarImagen() {{
-      await document.fonts.ready;
-      const elemento = document.getElementById('contenedor-programa');
-      html2canvas(elemento, {{ scale: 2, useCORS: true, backgroundColor: '#ffffff' }}).then(canvas => {{
+    <div class='tabla'>
+        <table>
+            <thead>
+                <tr>{encabezados_html}</tr>
+            </thead>
+            <tbody>
+                {filas_html}
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<script>
+async function imagen() {{
+    await document.fonts.ready;
+
+    html2canvas(
+        document.querySelector('#programa'),
+        {{
+            scale: 2,
+            backgroundColor: '#fff'
+        }}
+    ).then(canvas => {{
         const enlace = document.createElement('a');
-        enlace.download = 'Programa_Audio_Video_Microfono_Acomodador.png';
-        enlace.href = canvas.toDataURL('image/png');
+        enlace.download = 'Programa.png';
+        enlace.href = canvas.toDataURL();
         enlace.click();
-      }});
-    }}
+    }});
+}}
 
-    function descargarPDF() {{
-      const elemento = document.getElementById('contenedor-programa');
-      const opciones = {{
-        margin: 0.3,
-        filename: 'Programa_Audio_Video_Microfono_Acomodador.pdf',
-        image: {{ type: 'jpeg', quality: 0.98 }},
-        html2canvas: {{ scale: 2, useCORS: true }},
-        jsPDF: {{ unit: 'in', format: 'letter', orientation: 'landscape' }}
-      }};
-      html2pdf().set(opciones).from(elemento).save();
-    }}
+function pdf() {{
+    html2pdf()
+        .set({{
+            margin: .3,
+            filename: 'Programa.pdf',
+            html2canvas: {{ scale: 2 }},
+            jsPDF: {{
+                unit: 'in',
+                format: 'letter',
+                orientation: 'landscape'
+            }}
+        }})
+        .from(document.querySelector('#programa'))
+        .save();
+}}
 
-    function descargarExcel() {{
-      const tabla = document.querySelector('#contenedor-programa table');
-      if (!tabla) return;
-      const libro = XLSX.utils.table_to_book(tabla, {{ sheet: "Programa" }});
-      XLSX.writeFile(libro, 'Programa_Audio_Video_Microfono_Acomodador.xlsx');
-    }}
-  </script>
+function excel() {{
+    const libro = XLSX.utils.table_to_book(
+        document.querySelector('table'),
+        {{ sheet: 'Programa' }}
+    );
+
+    XLSX.writeFile(libro, 'Programa.xlsx');
+}}
+</script>
 </body>
 </html>
 """
 
-st.markdown("---")
-st.subheader("👁️ Vista Previa Final")
-components.html(html_code, height=750, scrolling=True)
+components.html(html_programa, height=700, scrolling=True)
+
+st.download_button(
+    "⬇️ Descargar tabla CSV",
+    datos.to_csv(index=False).encode("utf-8-sig"),
+    file_name="Programa_Audio_Video_Microfono_Acomodador.csv",
+    mime="text/csv",
+)
