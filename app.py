@@ -64,7 +64,8 @@ with st.sidebar:
     
     col_m1, col_m2 = st.columns(2)
     with col_m1:
-        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=8) # Septiembre
+        # Predeterminado en Octubre (índice 9)
+        mes_1 = st.selectbox("Mes 1", MESES_LISTA, index=9)
     
     meses_seleccionados = [mes_1]
     if cant_meses == "2 Meses":
@@ -95,36 +96,34 @@ with st.sidebar:
         st.success("¡Fechas cargadas correctamente!")
         st.rerun()
 
-    # --- HISTORIAL PRECARGADO DE AGOSTO ---
+    # --- HISTORIAL PRECARGADO DE SEPTIEMBRE ---
     st.markdown("---")
     st.subheader("📂 Historial del Mes Anterior")
     
-    historial_base_agosto = {
+    historial_base_septiembre = {
         "José Pereira": 2, "Javier García": 2, "Sebastián Montero": 2,
-        "Kenneth Solís": 2, "Carlos Josué Pereira": 2, "Julio Sánchez": 1,
-        "David Herrera": 3, "José Alberto González": 2, "Dáshler Sánchez": 2,
-        "Elixander Alvarado": 2, "Rafael Segura": 2, "Carlos Enrique Pereira": 1,
-        "Walter Sánchez": 1, "Rodney Alfaro": 2, "Josué López": 2,
-        "Iván Zamora": 1, "Carlos Blanco": 1, "Geremy Fernández": 1, "Roger Loaiza": 1
+        "Kenneth Solís": 2, "Carlos Josué Pereira": 2, "Julio Sánchez": 2,
+        "David Herrera": 1, "José Alberto González": 1, "Dáshler Sánchez": 2,
+        "Elixander Alvarado": 2, "Rafael Segura": 1, "Carlos Enrique Pereira": 1,
+        "Walter Sánchez": 1, "Rodney Alfaro": 1, "Josué López": 1,
+        "Iván Chavarría": 1, "Carlos Blanco": 1, "Adiel Arias": 2,
+        "Fran Vega": 2, "Meysson Pérez": 2, "Evans Arguedas": 2,
+        "Jossy Quesada": 2, "Henry Altamirano": 2, "Yoiser Vargas": 1
     }
 
-    fechas_base_agosto = {
-        "Kenneth Solís": datetime.date(2026, 9, 2),
-        "Josué López": datetime.date(2026, 9, 2),
-        "José Alberto González": datetime.date(2026, 9, 2),
-        "David Herrera": datetime.date(2026, 9, 2),
-        "Javier García": datetime.date(2026, 8, 30),
-        "Rodney Alfaro": datetime.date(2026, 8, 30),
-        "Elixander Alvarado": datetime.date(2026, 8, 30),
-        "Rafael Segura": datetime.date(2026, 8, 30),
-        "Sebastián Montero": datetime.date(2026, 8, 26),
-        "Dáshler Sánchez": datetime.date(2026, 8, 26),
-        "Carlos Enrique Pereira": datetime.date(2026, 8, 26),
-        "Carlos Josué Pereira": datetime.date(2026, 8, 23),
-        "José Pereira": datetime.date(2026, 8, 23),
-        "Iván Zamora": datetime.date(2026, 8, 23),
-        "Walter Sánchez": datetime.date(2026, 8, 23),
-        "Julio Sánchez": datetime.date(2026, 8, 19)
+    fechas_base_septiembre = {
+        "Jossy Quesada": datetime.date(2026, 9, 30),
+        "Rodney Alfaro": datetime.date(2026, 9, 30),
+        "Carlos Josué Pereira": datetime.date(2026, 9, 30),
+        "Javier García": datetime.date(2026, 9, 30),
+        "Meysson Pérez": datetime.date(2026, 9, 27),
+        "Josué López": datetime.date(2026, 9, 27),
+        "Henry Altamirano": datetime.date(2026, 9, 27),
+        "Julio Sánchez": datetime.date(2026, 9, 27),
+        "Adiel Arias": datetime.date(2026, 9, 23),
+        "Kenneth Solís": datetime.date(2026, 9, 23),
+        "Elixander Alvarado": datetime.date(2026, 9, 23),
+        "Fran Vega": datetime.date(2026, 9, 23)
     }
 
     archivo_historial = st.file_uploader(
@@ -132,14 +131,13 @@ with st.sidebar:
         type=["xlsx", "xls", "csv", "html"]
     )
     
-    conteo_historial = historial_base_agosto.copy()
+    conteo_historial = historial_base_septiembre.copy()
     
     if archivo_historial is not None:
         try:
             contenido = archivo_historial.read()
             df_hist = None
 
-            # 1. Intentar leer como tabla HTML
             try:
                 dfs = pd.read_html(io.BytesIO(contenido))
                 if dfs:
@@ -147,14 +145,12 @@ with st.sidebar:
             except Exception:
                 pass
 
-            # 2. Intentar leer como CSV
             if df_hist is None:
                 try:
                     df_hist = pd.read_csv(io.BytesIO(contenido))
                 except Exception:
                     pass
 
-            # 3. Intentar leer como Excel nativo (.xlsx)
             if df_hist is None:
                 try:
                     df_hist = pd.read_excel(io.BytesIO(contenido), engine='openpyxl')
@@ -219,6 +215,7 @@ with st.sidebar:
     hermanos_audio = [h.strip() for h in audio_txt.split("\n") if h.strip()]
 
     # 3. Ancianos y Siervos Ministeriales (Acomodadores)
+    # Javier García fue removido de la lista de acomodadores por regla de nombramiento
     ancianos_min_defecto = [
         "Carlos Enrique Pereira",
         "Elixander Alvarado",
@@ -238,9 +235,10 @@ with st.sidebar:
     mic_txt = st.text_area("🎤 Autorizados para MICRÓFONOS:", value="\n".join(mic_defecto), height=140)
     hermanos_mic = [h.strip() for h in mic_txt.split("\n") if h.strip()]
 
-# --- 2. INICIALIZACIÓN Y ACTUALIZACIÓN DE SESIÓN ---
+# --- 2. INICIALIZACIÓN Y AUTO-SINCRONIZACIÓN DE SESIÓN ---
 config_actual = (anio, tuple(meses_seleccionados), dia_habitual_entre_semana)
 
+# Forzar recarga automática si cambia la configuración del período en la barra lateral
 if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado") != config_actual:
     st.session_state.reuniones = generar_fechas_meses(
         anio=anio,
@@ -250,17 +248,15 @@ if "reuniones" not in st.session_state or st.session_state.get("periodo_cargado"
     st.session_state.periodo_cargado = config_actual
 
 st.subheader(f"🗓️ Asignación de Ocupados por Fecha — {periodo_str}")
-st.info("📌 **Reglas Activas:** Variación de parejas entre hermanos, Josué López incluido en Video/Mic, José Alberto solo en Audio/Mic/Acomodador y David Herrera excluido de los Domingos.")
+st.info("📌 **Reglas Activas:** Variación de parejas entre hermanos, Javier García excluido de Acomodador, Josué López incluido en Video/Mic, José Alberto solo en Audio/Mic/Acomodador y David Herrera excluido de los Domingos.")
 
-# ESTRUCTURAS DE SEGUIMIENTO REINICIALIZADAS PARA CADA CORRIDA
 datos_programa_final = []
 conteo_acumulado = {h: conteo_historial.get(h, 0) for h in todos_hermanos}
 ultimo_tipo_dia_mic = {h: None for h in hermanos_mic}
-ultima_fecha_asignado = {h: fechas_base_agosto.get(h, None) for h in todos_hermanos}
+ultima_fecha_asignado = {h: fechas_base_septiembre.get(h, None) for h in todos_hermanos}
 conteo_mes_actual = {}
 parejas_historial = set()
 
-# Variable para gestionar la eliminación segura fuera de iteración
 indice_a_eliminar = None
 
 # --- 3. ALGORITMO DE ASIGNACIÓN CON VARIACIÓN DE PAREJAS ---
@@ -269,21 +265,19 @@ for idx, reun in enumerate(st.session_state.reuniones):
         col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 3, 1])
         
         with col_f1:
-            nueva_fecha_str = st.text_input("Fecha", value=reun['fecha'], key=f"fecha_{idx}")
+            nueva_fecha_str = st.text_input("Fecha", value=reun['fecha'], key=f"fecha_input_{idx}")
             if nueva_fecha_str != reun['fecha']:
                 reun['fecha'] = nueva_fecha_str
-                # Sincronizar dt_obj automáticamente al cambiar la fecha por texto
                 try:
                     dt_parsed = datetime.datetime.strptime(nueva_fecha_str, "%d/%m/%Y").date()
                     reun['dt'] = dt_parsed
-                    # Actualizar automáticamente el día correspondiente a la nueva fecha
                     reun['dia'] = DIAS_SEMANA[dt_parsed.weekday()]
                 except ValueError:
                     pass
 
         with col_f2:
             idx_dia = DIAS_SEMANA.index(reun['dia']) if reun['dia'] in DIAS_SEMANA else 2
-            nuevo_dia = st.selectbox("Día de la reunión", DIAS_SEMANA, index=idx_dia, key=f"dia_{idx}")
+            nuevo_dia = st.selectbox("Día de la reunión", DIAS_SEMANA, index=idx_dia, key=f"dia_select_{idx}")
             if nuevo_dia != reun['dia']:
                 reun['dia'] = nuevo_dia
 
@@ -321,7 +315,6 @@ for idx, reun in enumerate(st.session_state.reuniones):
             if es_domingo:
                 excluidos.add("David Herrera")
 
-            # Garantizar que el objeto date esté correctamente parsed
             try:
                 dt_obj = datetime.datetime.strptime(reun['fecha'], "%d/%m/%Y").date()
             except Exception:
@@ -417,7 +410,6 @@ for idx, reun in enumerate(st.session_state.reuniones):
                 "Acomodador": h_aco
             })
 
-# Ejecución limpia de eliminación fuera del bucle
 if indice_a_eliminar is not None:
     st.session_state.reuniones.pop(indice_a_eliminar)
     st.rerun()
@@ -444,9 +436,9 @@ html_code = f"""
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <script src="[https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js](https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js)"></script>
-  <script src="[https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js](https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js)"></script>
-  <script src="[https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js](https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js)"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     body {{
       font-family: Arial, Helvetica, sans-serif;
