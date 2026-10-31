@@ -3,6 +3,7 @@ import datetime as dt
 import html
 import io
 import uuid
+from string import Template
 
 import pandas as pd
 import streamlit as st
@@ -331,8 +332,7 @@ with st.sidebar:
         type=["xlsx", "xls", "csv", "html", "htm"],
     )
 
-    # Historial predeterminado extraído de la foto de Octubre 2026
-    # Se actualiza la última participación de Adiel Arias al 18/10/2026 por la sustitución a José Pereira
+    # Historial predeterminado de Octubre 2026 con todas las sustituciones y exclusiones
     fechas_octubre_defecto = {
         "Dáshler Sánchez": dt.date(2026, 10, 14),
         "Evans Arguedas": dt.date(2026, 10, 28),
@@ -350,7 +350,7 @@ with st.sidebar:
         "Rafael Segura": dt.date(2026, 10, 25),
         "Yoiser Vargas": dt.date(2026, 10, 28),
         "Rodney Alfaro": dt.date(2026, 10, 18),
-        "José Pereira": dt.date(2026, 10, 4),  # Fecha anterior sin la sustitución del 18
+        "José Pereira": dt.date(2026, 10, 4),
         "Walter Sánchez": dt.date(2026, 10, 4),
         "Sebastián Montero": dt.date(2026, 10, 28),
         "Josué López": dt.date(2026, 10, 21),
@@ -677,7 +677,8 @@ encabezados_html = "".join(
 nombre_seguro = html.escape(congregacion)
 periodo_seguro = html.escape(periodo)
 
-html_programa = f"""
+# Uso de string.Template para evitar conflictos de llaves con CSS y JavaScript
+plantilla_html = Template("""
 <!doctype html>
 <html lang='es'>
 <head>
@@ -688,15 +689,15 @@ html_programa = f"""
 <script src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'></script>
 
 <style>
-body {{
+body {
     font-family: Arial, sans-serif;
     background: #f4f6f9;
     margin: 0;
     padding: 12px;
     text-align: center;
-}}
+}
 
-button {{
+button {
     border: 0;
     border-radius: 6px;
     color: #fff;
@@ -704,61 +705,61 @@ button {{
     font-weight: bold;
     margin: 0 5px 16px;
     padding: 10px 16px;
-}}
+}
 
-#png {{ background: #2b5876; }}
-#pdf {{ background: #c9403b; }}
-#excel {{ background: #18733a; }}
+#png { background: #2b5876; }
+#pdf { background: #c9403b; }
+#excel { background: #18733a; }
 
-#programa {{
+#programa {
     background: #fff;
     border: 1px solid #d0d7de;
     box-shadow: 0 4px 12px #0002;
     margin: auto;
     max-width: 1000px;
-}}
+}
 
-header {{
+header {
     background: #224b7a;
     color: #fff;
     padding: 24px 12px;
-}}
+}
 
-h1 {{
+h1 {
     font-size: 20px;
     letter-spacing: .7px;
     margin: 0 0 8px;
-}}
+}
 
-p {{
+p {
     margin: 0;
-}}
+}
 
-.tabla {{
+.tabla {
     overflow-x: auto;
     padding: 15px;
-}}
+}
 
-table {{
+table {
     border-collapse: collapse;
     width: 100%;
-}}
+}
 
-th {{
+th {
     background: #34495e;
     color: #fff;
-}}
+}
 
-th, td {{
+th, td {
     border: 1px solid #e1e8ed;
     font-size: 13px;
     padding: 9px 6px;
     text-align: center;
-}}
+}
 
-tr:nth-child(even) {{
+tr:nth-child(even) {
     background: #f8fafc;
-}}
+}
 </style>
 </head>
 
@@ -770,15 +771,80 @@ tr:nth-child(even) {{
 <main id='programa'>
     <header>
         <h1>PROGRAMA DE AUDIO, VIDEO, MICRÓFONO Y ACOMODADOR</h1>
-        <p>Congregación {nombre_seguro} | {periodo_seguro}</p>
+        <p>Congregación $nombre_seguro | $periodo_seguro</p>
     </header>
 
     <div class='tabla'>
         <table>
             <thead>
-                <tr>{encabezados_html}</tr>
+                <tr>$encabezados_html</tr>
             </thead>
             <tbody>
-                {filas_html}
+                $filas_html
             </tbody>
         </table>
+    </div>
+</main>
+
+<script>
+async function imagen() {
+    await document.fonts.ready;
+
+    html2canvas(
+        document.querySelector('#programa'),
+        {
+            scale: 2,
+            backgroundColor: '#fff'
+        }
+    ).then(canvas => {
+        const enlace = document.createElement('a');
+        enlace.download = 'Programa.png';
+        enlace.href = canvas.toDataURL();
+        enlace.click();
+    });
+}
+
+function pdf() {
+    html2pdf()
+        .set({
+            margin: .3,
+            filename: 'Programa.pdf',
+            html2canvas: { scale: 2 },
+            jsPDF: {
+                unit: 'in',
+                format: 'letter',
+                orientation: 'landscape'
+            }
+        })
+        .from(document.querySelector('#programa'))
+        .save();
+}
+
+function excel() {
+    const libro = XLSX.utils.table_to_book(
+        document.querySelector('table'),
+        { sheet: 'Programa' }
+    );
+
+    XLSX.writeFile(libro, 'Programa.xlsx');
+}
+</script>
+</body>
+</html>
+""")
+
+html_programa = plantilla_html.substitute(
+    nombre_seguro=nombre_seguro,
+    periodo_seguro=periodo_seguro,
+    encabezados_html=encabezados_html,
+    filas_html=filas_html
+)
+
+components.html(html_programa, height=700, scrolling=True)
+
+st.download_button(
+    "Descargar tabla CSV",
+    datos.to_csv(index=False).encode("utf-8-sig"),
+    file_name="Programa_Audio_Video_Microfono_Acomodador.csv",
+    mime="text/csv",
+)
